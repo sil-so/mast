@@ -33,20 +33,21 @@
   // Handle all modal-related clicks using event delegation
   function handleModalClicks(e) {
     const target = e.target;
+    const openButton = target.closest("dialog + button");
+    const closeButton = target.closest("dialog button");
 
-    // Handle show modal buttons
-    if (target.closest("[data-modal-open]")) {
+    // Handle show modal buttons (buttons that immediately follow dialogs)
+    if (openButton) {
       e.preventDefault();
-      const modalId = target.closest("[data-modal-open]").dataset.modalOpen;
-      const dialog = document.getElementById(modalId);
+      const dialog = openButton.previousElementSibling;
       if (dialog && dialog.tagName === "DIALOG") {
         dialog.showModal();
       }
       return;
     }
 
-    // Handle close modal buttons
-    if (target.closest("[data-modal-close]")) {
+    // Handle close modal buttons (any button inside a dialog)
+    if (closeButton) {
       e.preventDefault();
       const dialog = target.closest("dialog");
       if (dialog) {
@@ -79,6 +80,7 @@
       dialog.close();
     }, { once: true });
   }
+
 
   // Handle auto-open modal functionality with cooldown support
   function handleAutoOpenModal(dialog) {
@@ -117,13 +119,16 @@
     }
   }
 
-  // Get the modal ID from its own id attribute
+  // Get the modal ID from the parent element (Restored to original logic)
   function getModalId(dialog) {
-    if (!dialog.id) {
-      console.log("Modal component must have an ID set for cooldown to work.");
+    const parent = dialog.parentElement;
+
+    if (!parent || !parent.id) {
+      console.log("Modal component must have ID set for cooldown to work.");
       return null;
     }
-    return dialog.id;
+
+    return parent.id;
   }
 
   // Check if a modal is currently in cooldown period
