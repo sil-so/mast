@@ -20,8 +20,8 @@
       // Use event delegation for better performance
       document.addEventListener("click", handleModalClicks);
 
-      // Setup individual dialog listeners only for click-outside functionality
-      dialogs.forEach(setupDialogClickOutside);
+      // Setup individual dialog listeners
+      dialogs.forEach(setupDialogListeners);
 
       // Handle auto-open modals with cooldown support
       dialogs.forEach(handleAutoOpenModal);
@@ -34,33 +34,34 @@
   function handleModalClicks(e) {
     const target = e.target;
 
-    // Handle show modal buttons (buttons that immediately follow dialogs)
-    if (target.closest("dialog + button")) {
+    // Handle show modal buttons
+    if (target.closest("[data-modal-open]")) {
       e.preventDefault();
-      const dialog = target.previousElementSibling;
+      const modalId = target.closest("[data-modal-open]").dataset.modalOpen;
+      const dialog = document.getElementById(modalId);
       if (dialog && dialog.tagName === "DIALOG") {
         dialog.showModal();
       }
       return;
     }
 
-    // Handle close modal buttons (any button inside a dialog)
-    if (target.closest("dialog button")) {
+    // Handle close modal buttons
+    if (target.closest("[data-modal-close]")) {
       e.preventDefault();
       const dialog = target.closest("dialog");
       if (dialog) {
-        dialog.close();
+        closeModal(dialog);
       }
       return;
     }
   }
 
-  // Setup click-outside-to-close functionality for each dialog
-  function setupDialogClickOutside(dialog) {
+  // Setup listeners for each dialog
+  function setupDialogListeners(dialog) {
+    // Click outside to close
     dialog.addEventListener("click", function (e) {
-      // Only close if clicking on the dialog backdrop (not its content)
       if (e.target === dialog) {
-        dialog.close();
+        closeModal(dialog);
       }
     });
 
@@ -68,6 +69,15 @@
     dialog.addEventListener("close", function () {
       handleModalClose(dialog);
     });
+  }
+
+  // Function to close the modal with animation
+  function closeModal(dialog) {
+    dialog.classList.add("closing");
+    dialog.addEventListener("animationend", () => {
+      dialog.classList.remove("closing");
+      dialog.close();
+    }, { once: true });
   }
 
   // Handle auto-open modal functionality with cooldown support
@@ -107,16 +117,13 @@
     }
   }
 
-  // Get the modal ID from the parent element
+  // Get the modal ID from its own id attribute
   function getModalId(dialog) {
-    const parent = dialog.parentElement;
-
-    if (!parent || !parent.id) {
-      console.log("Modal component must have ID set for cooldown to work.");
+    if (!dialog.id) {
+      console.log("Modal component must have an ID set for cooldown to work.");
       return null;
     }
-
-    return parent.id;
+    return dialog.id;
   }
 
   // Check if a modal is currently in cooldown period
