@@ -75,36 +75,32 @@
   }
 
   function setupHeightCalculation(element, swiper) {
-      function updateSliderHeight() {
-        const slides = element.querySelectorAll('.swiper-slide');
-        if (slides.length === 0) return;
+    function updateSliderHeight() {
+      const slides = element.querySelectorAll('.swiper-slide');
+      if (slides.length === 0) return;
   
-        element.style.height = '';
+      element.style.height = ''; 
   
-        let maxHeight = 0;
+      let maxHeight = 0;
+      slides.forEach(slide => {
+        slide.style.height = 'auto';
+        const slideHeight = slide.offsetHeight;
+        if (slideHeight > maxHeight) maxHeight = slideHeight;
+      });
   
-        slides.forEach(slide => {
-          slide.style.height = 'auto';
-          const slideHeight = slide.offsetHeight;
-          if (slideHeight > maxHeight) {
-            maxHeight = slideHeight;
-          }
-        });
-  
-        if (maxHeight > 0) {
-          element.style.height = maxHeight + 'px';
-        }
-  
-        if(swiper) swiper.update();
+      if (maxHeight > 0) {
+        element.style.height = maxHeight + 'px';
       }
+      
+      if(swiper) swiper.update();
+    }
   
-      setTimeout(updateSliderHeight, 50);
+    updateSliderHeight();
   
-      swiper.on('slideChange', updateSliderHeight);
-      swiper.on('slideChangeTransitionEnd', updateSliderHeight);
-      swiper.on('touchEnd', updateSliderHeight);
-  
-      swiper.on('resize', updateSliderHeight);
+    swiper.on('slideChange', updateSliderHeight);
+    swiper.on('slideChangeTransitionEnd', updateSliderHeight);
+    swiper.on('touchEnd', updateSliderHeight);
+    swiper.on('resize', updateSliderHeight);
   }
 
   function processWebflowCMSLists(element) {
