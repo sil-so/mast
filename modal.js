@@ -9,15 +9,13 @@
     // Initialize modal functionality
     function initModals() {
         try {
-            // Get all dialog elements
             const dialogs = document.querySelectorAll("dialog");
 
-            // Early exit if no dialogs found
             if (dialogs.length === 0) {
                 return;
             }
 
-            // Use event delegation for better performance
+            // Use event delegation for all clicks
             document.addEventListener("click", handleModalClicks);
 
             // Setup individual dialog listeners
@@ -33,21 +31,25 @@
     // Handle all modal-related clicks using event delegation
     function handleModalClicks(e) {
         const target = e.target;
-        const openButton = target.closest("dialog + button");
-        const closeButton = target.closest("dialog button");
 
-        // Handle show modal buttons (buttons that immediately follow dialogs)
-        if (openButton) {
+        // 1. Handle Open Triggers (Looks for [data-open-modal="ID"])
+        const openTrigger = target.closest("[data-open-modal]");
+        if (openTrigger) {
             e.preventDefault();
-            const dialog = openButton.previousElementSibling;
+            const modalId = openTrigger.dataset.openModal;
+            const dialog = document.getElementById(modalId);
+
             if (dialog && dialog.tagName === "DIALOG") {
                 dialog.showModal();
                 dialog.scrollTop = 0;
+            } else {
+                console.warn(`No dialog found with ID: ${modalId}`);
             }
             return;
         }
 
-        // Handle close modal buttons (any button inside a dialog)
+        // 2. Handle Close Buttons (Any button inside a dialog)
+        const closeButton = target.closest("dialog button");
         if (closeButton) {
             e.preventDefault();
             const dialog = target.closest("dialog");
@@ -60,7 +62,7 @@
 
     // Setup listeners for each dialog
     function setupDialogListeners(dialog) {
-        // Click outside to close
+        // Click outside (backdrop) to close
         dialog.addEventListener("click", function (e) {
             if (e.target === dialog) {
                 closeModal(dialog);
@@ -82,7 +84,6 @@
         }, { once: true });
     }
 
-
     // Handle auto-open modal functionality with cooldown support
     function handleAutoOpenModal(dialog) {
         const shouldOpenOnLoad = dialog.dataset.modalOpenOnLoad === "true";
@@ -94,17 +95,14 @@
         const cooldownDays = parseInt(dialog.dataset.modalCooldownDays, 10) || 0;
         const modalId = getModalId(dialog);
 
-        // Exit if modal doesn't have a valid parent ID
         if (!modalId) {
             return;
         }
 
-        // Check if modal is in cooldown period
         if (cooldownDays > 0 && isInCooldown(modalId)) {
             return;
         }
 
-        // Open the modal
         dialog.showModal();
         dialog.scrollTop = 0;
     }
@@ -121,16 +119,20 @@
         }
     }
 
-    // Get the modal ID from the parent element (Restored to original logic)
+    // Get the modal ID (Uses the dialog's ID directly)
     function getModalId(dialog) {
+        if (dialog.id) {
+            return dialog.id;
+        }
+        
+        // Fallback to parent ID if dialog has no ID (legacy support)
         const parent = dialog.parentElement;
-
-        if (!parent || !parent.id) {
-            console.log("Modal component must have ID set for cooldown to work.");
-            return null;
+        if (parent && parent.id) {
+            return parent.id;
         }
 
-        return parent.id;
+        console.log("Dialog or parent must have an ID set for linking and cooldowns.");
+        return null;
     }
 
     // Check if a modal is currently in cooldown period
@@ -146,7 +148,6 @@
             const now = Date.now();
             const cooldownTime = parseInt(cooldownUntil, 10);
 
-            // If cooldown has expired, remove it from storage
             if (now > cooldownTime) {
                 localStorage.removeItem(storageKey);
                 return false;
@@ -164,7 +165,7 @@
         try {
             const storageKey = `modal-cooldown-${modalId}`;
             const now = Date.now();
-            const cooldownDuration = days * 24 * 60 * 60 * 1000; // Convert days to milliseconds
+            const cooldownDuration = days * 24 * 60 * 60 * 1000; 
             const cooldownUntil = now + cooldownDuration;
 
             localStorage.setItem(storageKey, cooldownUntil.toString());
