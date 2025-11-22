@@ -35,17 +35,18 @@
         // 1. Handle Open Triggers (Looks for [data-open-modal="ID"])
         const openTrigger = target.closest("[data-open-modal]");
         if (openTrigger) {
-            e.preventDefault();
-            const modalId = openTrigger.dataset.openModal;
-            const dialog = document.getElementById(modalId);
-
-            if (dialog && dialog.tagName === "DIALOG") {
-                dialog.showModal();
-                dialog.scrollTop = 0;
-            } else {
-                console.warn(`No dialog found with ID: ${modalId}`);
-            }
-            return;
+          e.preventDefault();
+          const modalId = openTrigger.dataset.openModal;
+          if (!modalId) return;
+          const dialog = document.getElementById(modalId);
+        
+          if (dialog && dialog.tagName === "DIALOG") {
+            dialog.showModal();
+            dialog.scrollTop = 0;
+          } else {
+            console.warn(`No dialog found with ID: ${modalId}`);
+          }
+          return;
         }
 
         // 2. Handle Close Buttons (Any button inside a dialog)
