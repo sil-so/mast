@@ -91,8 +91,8 @@ window.addEventListener('load', function() {
     filterButtons.forEach(button => {
       button.addEventListener('click', function(e) {
         e.preventDefault();
-        filterButtons.forEach(btn => btn.classList.remove('cc-active'));
-        this.classList.add('cc-active');
+        filterButtons.forEach(btn => btn.classList.remove('cc-filter-active'));
+        this.classList.add('cc-filter-active');
 
         const labelName = this.getAttribute('data-filter-name') || this.textContent.trim();
         if (toggleText) toggleText.textContent = labelName;
