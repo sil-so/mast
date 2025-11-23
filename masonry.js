@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
       masonry: { columnWidth: '.grid-sizer' },
       visibleStyle: { opacity: 1 },
       hiddenStyle: { opacity: 0 },
-      stagger: 30
+      stagger: 50
     });
 
     masonryContainer.classList.add(CLASSES.loaded);
