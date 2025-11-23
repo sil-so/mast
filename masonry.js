@@ -79,6 +79,17 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // --- Shuffle Logic ---
+  const shuffleBtn = document.querySelector('[data-action="shuffle"]');
+  
+  if (shuffleBtn) {
+    shuffleBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!iso) return;
+      iso.shuffle();
+    });
+  }
+
   // --- Filtering Logic ---
 
   const filterComponent = document.querySelector('.filter-component');
