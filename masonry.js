@@ -1,34 +1,45 @@
-window.addEventListener('load', function() {
+document.addEventListener('DOMContentLoaded', () => {
+  // Guard: Ensure libraries exist
+  if (typeof Isotope === 'undefined' || typeof imagesLoaded === 'undefined') {
+    console.error('Isotope or imagesLoaded library not found.');
+    return;
+  }
+
   const masonryContainer = document.querySelector('.masonry-container');
   if (!masonryContainer) return;
 
-  let iso;
-  const viewSwitchers = document.querySelectorAll('[data-columns]');
-  const colClasses = ['cols-1', 'cols-2', 'cols-3', 'cols-4'];
+  // Configuration
+  const CLASSES = {
+    activeFilter: 'cc-filter-active',
+    activeView: 'cc-view-active',
+    loaded: 'is-loaded'
+  };
   
-  // Determine current default columns based on CSS breakpoints
-  function getCurrentDefaultCols() {
+  const colClasses = ['cols-1', 'cols-2', 'cols-3', 'cols-4'];
+  let iso;
+
+  // --- Helper Functions ---
+
+  const getCurrentDefaultCols = () => {
     const w = window.innerWidth;
     if (w >= 1200) return '4';
     if (w >= 992) return '3';
     if (w >= 768) return '2';
     return '1';
-  }
+  };
 
-  function updateActiveViewButton(columns) {
-    viewSwitchers.forEach(btn => {
-      if (btn.getAttribute('data-columns') === columns) {
-        btn.classList.add('cc-view-active');
-      } else {
-        btn.classList.remove('cc-view-active');
-      }
+  const updateActiveViewButton = (columns) => {
+    document.querySelectorAll('[data-columns]').forEach(btn => {
+      const isActive = btn.getAttribute('data-columns') === columns;
+      btn.classList.toggle(CLASSES.activeView, isActive);
     });
-  }
+  };
 
-  // Initialize Isotope after images load
+  // --- Initialization ---
+
   const imgLoad = imagesLoaded(masonryContainer);
 
-  imgLoad.on('done', function() {
+  imgLoad.on('done', () => {
     iso = new Isotope(masonryContainer, {
       itemSelector: '.masonry-item',
       layoutMode: 'masonry',
@@ -38,48 +49,54 @@ window.addEventListener('load', function() {
       hiddenStyle: { opacity: 0 },
       stagger: 30
     });
-    masonryContainer.classList.add('is-loaded');
+
+    masonryContainer.classList.add(CLASSES.loaded);
     window.isoInstance = iso;
 
-    // Set initial button state based on breakpoint
-    const startCols = getCurrentDefaultCols();
-    updateActiveViewButton(startCols);
+    // Set initial view state
+    updateActiveViewButton(getCurrentDefaultCols());
   });
 
-  // View Switchers - Change column count
-  viewSwitchers.forEach(button => {
+  // --- View Switchers ---
+  
+  document.querySelectorAll('[data-columns]').forEach(button => {
     button.addEventListener('click', function() {
       if (!iso) return;
-      const targetCols = this.getAttribute('data-columns');
       
+      const targetCols = this.getAttribute('data-columns');
       updateActiveViewButton(targetCols);
 
-      // Force container class override
+      // Reset container classes
       masonryContainer.classList.remove(...colClasses);
       masonryContainer.classList.add(`cols-${targetCols}`);
 
-      // Trigger internal swiper resize
-      const swipers = masonryContainer.querySelectorAll('[data-slider="slider"]');
-      swipers.forEach(s => s.swiperInstance?.emit('resize'));
+      // Trigger Swiper updates if present
+      masonryContainer.querySelectorAll('[data-slider="slider"]').forEach(s => {
+        if (s.swiperInstance) s.swiperInstance.emit('resize');
+      });
 
       iso.layout();
     });
   });
 
-  // Unified Filter Logic
-  const filterComponent = document.querySelector('.filter-component');
-  const filterList = document.querySelector('.filter-list');
-  const mobileToggle = document.querySelector('.filter-mobile-toggle');
-  const toggleText = document.querySelector('.toggle-text');
-  const filterButtons = document.querySelectorAll('.cc-filter');
+  // --- Filtering Logic ---
 
-  if (filterComponent) {
-    if (mobileToggle) {
+  const filterComponent = document.querySelector('.filter-component');
+  const filterButtons = document.querySelectorAll('[data-filter]');
+
+  if (filterComponent && filterButtons.length > 0) {
+    const filterList = filterComponent.querySelector('.filter-list');
+    const mobileToggle = filterComponent.querySelector('.filter-mobile-toggle');
+    const toggleText = filterComponent.querySelector('.toggle-text');
+
+    // Mobile Toggle
+    if (mobileToggle && filterList) {
       mobileToggle.addEventListener('click', (e) => {
         e.stopPropagation();
         const isOpen = filterList.classList.toggle('is-open');
         mobileToggle.setAttribute('aria-expanded', isOpen);
       });
+
       document.addEventListener('click', (e) => {
         if (!filterComponent.contains(e.target)) {
           filterList.classList.remove('is-open');
@@ -88,34 +105,39 @@ window.addEventListener('load', function() {
       });
     }
 
+    // Filter Clicks
     filterButtons.forEach(button => {
       button.addEventListener('click', function(e) {
         e.preventDefault();
-        filterButtons.forEach(btn => btn.classList.remove('cc-filter-active'));
-        this.classList.add('cc-filter-active');
+        if (!iso) return;
 
+        // Visual State
+        filterButtons.forEach(btn => btn.classList.remove(CLASSES.activeFilter));
+        this.classList.add(CLASSES.activeFilter);
+
+        // UI Text Update
         const labelName = this.getAttribute('data-filter-name') || this.textContent.trim();
         if (toggleText) toggleText.textContent = labelName;
         if (filterList) filterList.classList.remove('is-open');
 
-        if (iso) {
-          const raw = this.getAttribute('data-filter');
-          const finalFilter = raw === '*' ? '*' : `[data-category~="${raw}"]`;
-          iso.arrange({ filter: finalFilter });
-        }
+        // Isotope Filtering
+        const raw = this.getAttribute('data-filter');
+        const finalFilter = raw === '*' ? '*' : `[data-category~="${raw}"]`;
+        iso.arrange({ filter: finalFilter });
       });
     });
   }
 
-  // Debounced resize handler
+  // --- Resize Handling (Debounced) ---
+
   let resizeTimer;
-  window.addEventListener('resize', function() {
+  window.addEventListener('resize', () => {
     if (!iso) return;
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       iso.layout();
       
-      // Update button if no manual column override exists
+      // Re-sync buttons only if no manual override class exists
       const hasManualOverride = colClasses.some(c => masonryContainer.classList.contains(c));
       if (!hasManualOverride) {
          updateActiveViewButton(getCurrentDefaultCols());
@@ -123,15 +145,29 @@ window.addEventListener('load', function() {
     }, 250);
   });
 
-  // Read More - Observe height changes and trigger layout
-  document.addEventListener('click', function(e) {
+  // --- Dynamic Content Observer ---
+  
+  document.addEventListener('click', (e) => {
     const readMoreBtn = e.target.closest('.testimonial-toggle');
-    if (readMoreBtn) {
-      const wrapper = readMoreBtn.closest('.masonry-item')?.querySelector('.testimonial-wrapper');
-      if (!wrapper) return;
-      const observer = new MutationObserver(() => window.isoInstance?.layout());
-      observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
-      setTimeout(() => observer.disconnect(), 550);
-    }
+    if (!readMoreBtn) return;
+
+    const wrapper = readMoreBtn.closest('.masonry-item')?.querySelector('.testimonial-wrapper');
+    if (!wrapper) return;
+
+    // Prevent multiple observers stacking up
+    if (wrapper._isoObserver) wrapper._isoObserver.disconnect();
+
+    const observer = new MutationObserver(() => {
+      if (window.isoInstance) window.isoInstance.layout();
+    });
+    
+    observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
+    wrapper._isoObserver = observer; // Store reference on element
+
+    // Cleanup after transition
+    setTimeout(() => {
+      observer.disconnect();
+      delete wrapper._isoObserver;
+    }, 600);
   });
 });
