@@ -1,0 +1,60 @@
+(function () {
+  "use strict";
+
+  function initializeStacks() {
+    // 1. Select all stack wrappers
+    const stacks = document.querySelectorAll('[data-stack="wrapper"]');
+
+    if (stacks.length === 0) return;
+
+    stacks.forEach((stack) => {
+      // 2. Identify images
+      const items = stack.querySelectorAll('img');
+      if (items.length === 0) return;
+
+      // 3. Create the GLightbox Gallery Elements Array
+      const galleryElements = Array.from(items).map((img) => ({
+        href: img.currentSrc || img.src,
+        type: 'image',
+        alt: img.getAttribute('alt') || 'Project Image',
+      }));
+
+      // 4. Inject Count Badge (If more than 1 image)
+      if (items.length > 1) {
+        const badge = document.createElement('div');
+        badge.classList.add('stack-badge');
+        // Option A: "1 / 5" style
+        // badge.textContent = `1 / ${items.length}`; 
+        // Option B: "+4" style (Preferred for stacks)
+        badge.textContent = `+${items.length - 1}`;
+        stack.appendChild(badge);
+      }
+
+      // 5. Initialize GLightbox for this specific stack
+      // We do not bind it to a specific button, but to the function below.
+      const lightbox = GLightbox({
+        elements: galleryElements,
+        touchNavigation: true,
+        loop: true,
+        openEffect: 'subtle-zoom', // Using your custom CSS names
+        closeEffect: 'subtle-zoom', 
+        cssEfects: { // Maintaining library typo fix
+           'subtle-zoom': { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
+        }
+      });
+
+      // 6. Bind Click Event to the entire Wrapper
+      stack.addEventListener('click', (e) => {
+        e.preventDefault();
+        lightbox.open();
+      });
+    });
+  }
+
+  // Init on Load
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeStacks);
+  } else {
+    initializeStacks();
+  }
+})();
