@@ -80,37 +80,50 @@
 
     if (galleryElements.length === 0) return;
 
-    // Init GLightbox with Custom Animation
+    // Init GLightbox
     const lightbox = GLightbox({
       elements: galleryElements,
       touchNavigation: true,
       loop: true,
       zoomable: true,
-      // Custom Animation Config
       openEffect: 'subtle-zoom',
       closeEffect: 'subtle-zoom',
-      cssEffects: {
+      // CRITICAL FIX: The library API uses 'cssEfects' (typo in library), not 'cssEffects'.
+      cssEfects: {
         'subtle-zoom': { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
       }
     });
 
     // Sync: Lightbox -> Swiper
     lightbox.on('slide_changed', ({ current }) => {
-      if (swiper.params.loop) {
-        swiper.slideToLoop(current.index, 0); 
-      } else {
-        swiper.slideTo(current.index, 0);
+      // Guard: Only sync if the lightbox content is actually visible/open
+      if (document.querySelector('.glightbox-container')) {
+        if (swiper.params.loop) {
+          swiper.slideToLoop(current.index, 0); 
+        } else {
+          swiper.slideTo(current.index, 0);
+        }
       }
     });
 
     // Sync: Swiper -> Lightbox
     if (triggerBtn) {
+      // Clean up old listener if re-initialized to prevent double-clicks
+      if (triggerBtn._lightboxHandler) {
+        triggerBtn.removeEventListener('click', triggerBtn._lightboxHandler);
+      }
+
       triggerBtn.style.cursor = 'pointer';
       triggerBtn.setAttribute('aria-label', 'Open gallery');
-      triggerBtn.addEventListener('click', (e) => {
+      
+      const clickHandler = (e) => {
         e.preventDefault();
         lightbox.openAt(swiper.realIndex);
-      });
+      };
+      
+      // Store reference to handler for cleanup
+      triggerBtn._lightboxHandler = clickHandler;
+      triggerBtn.addEventListener('click', clickHandler);
     }
   }
 
@@ -137,11 +150,13 @@
   function setupHeightCalculation(element, swiper) {
     function updateSliderHeight() {
       const slides = element.querySelectorAll('.swiper-slide');
-      if (slides.length === 0) return;
+      if (!slides || slides.length === 0) return;
       
       element.style.height = '';
       let maxHeight = 0;
+      
       slides.forEach(slide => {
+        if (!slide) return; // Safety check
         slide.style.height = 'auto';
         const h = slide.offsetHeight;
         if (h > maxHeight) maxHeight = h;
