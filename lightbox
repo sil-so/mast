@@ -1,57 +1,72 @@
 (function () {
   "use strict";
 
-  function initializeStacks() {
-    // 1. Select all stack wrappers
-    const stacks = document.querySelectorAll('[data-stack="wrapper"]');
+  // Configuration
+  const SELECTORS = {
+    wrapper: '[data-stack="wrapper"]',
+    item: '[data-stack="item"]',
+    img: 'img'
+  };
 
+  function initializeStacks() {
+    const stacks = document.querySelectorAll(SELECTORS.wrapper);
     if (stacks.length === 0) return;
 
     stacks.forEach((stack) => {
-      // 2. Identify images
-      const items = stack.querySelectorAll('img');
-      if (items.length === 0) return;
+      // Find all images within this stack (handles nested Webflow divs)
+      const images = stack.querySelectorAll(`${SELECTORS.item} ${SELECTORS.img}`);
+      
+      if (images.length === 0) return;
 
-      // 3. Create the GLightbox Gallery Elements Array
-      const galleryElements = Array.from(items).map((img) => ({
-        href: img.currentSrc || img.src,
-        type: 'image',
-        alt: img.getAttribute('alt') || 'Project Image',
-      }));
+      // 1. Build Gallery Data
+      const galleryElements = Array.from(images).map((img) => {
+        // Prefer currentSrc for responsive sizing, fallback to src
+        const src = img.currentSrc || img.src;
+        // Fix for lazy loaded images that might not have currentSrc yet
+        const cleanSrc = src.startsWith('data:') ? img.dataset.src || img.src : src;
+        
+        return {
+          href: cleanSrc,
+          type: 'image',
+          alt: img.getAttribute('alt') || 'Work'
+        };
+      });
 
-      // 4. Inject Count Badge (If more than 1 image)
-      if (items.length > 1) {
+      // 2. Inject Badge
+      if (images.length > 1) {
         const badge = document.createElement('div');
         badge.classList.add('stack-badge');
-        // Option A: "1 / 5" style
-        // badge.textContent = `1 / ${items.length}`; 
-        // Option B: "+4" style (Preferred for stacks)
-        badge.textContent = `+${items.length - 1}`;
+        badge.textContent = `+${images.length - 1}`;
         stack.appendChild(badge);
       }
 
-      // 5. Initialize GLightbox for this specific stack
-      // We do not bind it to a specific button, but to the function below.
+      // 3. Init Lightbox (Scoped to this stack)
       const lightbox = GLightbox({
         elements: galleryElements,
         touchNavigation: true,
         loop: true,
-        openEffect: 'subtle-zoom', // Using your custom CSS names
-        closeEffect: 'subtle-zoom', 
-        cssEfects: { // Maintaining library typo fix
+        openEffect: 'subtle-zoom',
+        closeEffect: 'subtle-zoom',
+        cssEfects: { 
            'subtle-zoom': { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
         }
       });
 
-      // 6. Bind Click Event to the entire Wrapper
+      // 4. Bind Click
+      // We bind to the wrapper. Due to CSS pointer-events on overlays, 
+      // the click will bubble up correctly.
       stack.addEventListener('click', (e) => {
+        // Check if we clicked a button or link inside (safety check)
+        if (e.target.closest('a, button')) return;
+        
         e.preventDefault();
+        e.stopPropagation();
         lightbox.open();
       });
     });
   }
 
-  // Init on Load
+  // Init
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initializeStacks);
   } else {
