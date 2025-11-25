@@ -1,33 +1,31 @@
 (function () {
   "use strict";
 
-  // Early exit if Swiper is not available
-  if (typeof Swiper === "undefined") {
-    return;
-  }
+  if (typeof Swiper === "undefined") return;
+
+  // -----------------------------------------------------------
+  // Initialization
+  // -----------------------------------------------------------
 
   function initializeSwipers() {
     const swiperElements = document.querySelectorAll('[data-slider="slider"]');
+    if (swiperElements.length === 0) return;
 
-    // Gracefully exit if no sliders found
-    if (swiperElements.length === 0) {
-      return;
-    }
-
-    // Initialize each swiper instance
     swiperElements.forEach((element, index) => {
       initializeSwiper(element, index);
     });
   }
 
-  // Initialize when DOM is ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initializeSwipers);
   } else {
     initializeSwipers();
   }
 
-  // Handle viewport resize with debouncing - only for width changes
+  // -----------------------------------------------------------
+  // Resize Handling
+  // -----------------------------------------------------------
+
   let resizeTimeout;
   let lastWidth = window.innerWidth;
 
@@ -35,150 +33,187 @@
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
       const currentWidth = window.innerWidth;
-
-      // Only reinitialize if width changed (ignore iOS Safari chrome height changes)
       if (currentWidth !== lastWidth) {
         lastWidth = currentWidth;
-
         if (window.AttributesSwiper && window.AttributesSwiper.reinitialize) {
           window.AttributesSwiper.reinitialize();
         }
       }
-    }, 250); // 250ms debounce delay
+    }, 250);
   }
 
-  // Add resize listener
   window.addEventListener("resize", handleResize);
+
+  // -----------------------------------------------------------
+  // Core Logic
+  // -----------------------------------------------------------
 
   function initializeSwiper(element, index) {
     try {
-      // Process Webflow CMS collection lists before initialization
       processWebflowCMSLists(element);
 
-      // Get configuration from data attributes
+      // 1. Get Config & Init Swiper
       const config = getSwiperConfig(element);
-
-      // Initialize Swiper
       const swiper = new Swiper(element, config);
-
-      // Store reference for potential future access
       element.swiperInstance = swiper;
 
-      // Add height calculation and update mechanism
+      // 2. Setup Features
       setupHeightCalculation(element, swiper);
+      setupLiveCounter(element, swiper);
+      
+      // 3. Setup GLightbox (Pass swiper instance to sync index)
+      setupScopedGLightbox(element, swiper);
+
     } catch (error) {
-      // Silently handle errors in production
-      if (typeof console !== "undefined" && console.error) {
-        console.error("Swiper initialization failed:", error);
-      }
+      console.error("Swiper initialization failed:", error);
     }
+  }
+
+  function setupScopedGLightbox(element, swiper) {
+    // 1. Find the wrapper to locate the specific trigger for this slider
+    const componentWrapper = element.closest('[data-slider="component"]');
+    if (!componentWrapper) return;
+
+    const triggerBtn = componentWrapper.querySelector('[data-slider="lightbox-trigger"]');
+    
+    // 2. Build the Gallery Data from Slides
+    // We select only non-duplicate slides to get the clean list of images
+    const slides = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)');
+    const galleryElements = [];
+
+    slides.forEach((slide) => {
+      const img = slide.querySelector('img');
+      if (img) {
+        galleryElements.push({
+          href: img.src || img.currentSrc, // Uses current visible source
+          type: 'image',
+          alt: img.getAttribute('alt') || '',
+          title: img.getAttribute('alt') || '', // Shows alt text as caption
+        });
+      }
+    });
+
+    if (galleryElements.length === 0) return;
+
+    // 3. Initialize GLightbox with the virtual elements list
+    const lightbox = GLightbox({
+      elements: galleryElements,
+      touchNavigation: true,
+      loop: true,
+      zoomable: true,
+      openEffect: 'zoom',
+      closeEffect: 'zoom'
+    });
+
+    // 4. Bind Click Event
+    // If trigger exists, open lightbox at the current Swiper index
+    if (triggerBtn) {
+      triggerBtn.style.cursor = 'pointer';
+      triggerBtn.setAttribute('aria-label', 'Open image gallery');
+      
+      triggerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        // swiper.realIndex handles loop mode correctly (0-based index of content)
+        lightbox.openAt(swiper.realIndex);
+      });
+    }
+  }
+
+  function setupLiveCounter(element, swiper) {
+    const component = element.closest('[data-slider="component"]');
+    if (!component) return;
+
+    const counterEl = component.querySelector('[data-slider="counter"]');
+    if (!counterEl) return;
+
+    const updateCounter = () => {
+      // Calculate total unique slides (excluding loop duplicates)
+      const slides = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)');
+      const total = slides.length;
+      
+      // realIndex is 0-based
+      const current = swiper.realIndex + 1;
+
+      counterEl.textContent = `${current}/${total}`;
+    };
+
+    updateCounter();
+    
+    // Update on any change
+    swiper.on('slideChange', updateCounter);
+    swiper.on('slideChangeTransitionEnd', updateCounter);
   }
 
   function setupHeightCalculation(element, swiper) {
     function updateSliderHeight() {
       const slides = element.querySelectorAll('.swiper-slide');
       if (slides.length === 0) return;
-  
-      element.style.height = ''; 
-  
+      
+      element.style.height = '';
       let maxHeight = 0;
+      
       slides.forEach(slide => {
         slide.style.height = 'auto';
         const slideHeight = slide.offsetHeight;
         if (slideHeight > maxHeight) maxHeight = slideHeight;
       });
-  
-      if (maxHeight > 0) {
-        element.style.height = maxHeight + 'px';
-      }
       
-      if(swiper) swiper.update();
+      if (maxHeight > 0) element.style.height = maxHeight + 'px';
+      if (swiper) swiper.update();
     }
-  
+    
     updateSliderHeight();
-  
     swiper.on('slideChange', updateSliderHeight);
     swiper.on('slideChangeTransitionEnd', updateSliderHeight);
-    swiper.on('touchEnd', updateSliderHeight);
     swiper.on('resize', updateSliderHeight);
   }
 
   function processWebflowCMSLists(element) {
-    // Find and process Webflow CMS collection list elements
     const webflowSelectors = [".w-dyn-list", ".w-dyn-items", ".w-dyn-item"];
-
     webflowSelectors.forEach((selector) => {
       const webflowElements = element.querySelectorAll(selector);
-
       webflowElements.forEach((webflowElement) => {
-        // Get all child nodes (including text nodes and elements)
         const children = Array.from(webflowElement.childNodes);
-
-        // Insert children before the webflow element
         children.forEach((child) => {
           webflowElement.parentNode.insertBefore(child, webflowElement);
         });
-
-        // Remove the now-empty webflow wrapper element
         webflowElement.remove();
       });
     });
   }
 
   function getSwiperConfig(element) {
-    // Get computed styles to read CSS variables for proper slide calculation
     const computedStyle = getComputedStyle(element);
     const xs = parseFloat(computedStyle.getPropertyValue("--xs").trim()) || 1;
     const sm = parseFloat(computedStyle.getPropertyValue("--sm").trim()) || 1;
     const md = parseFloat(computedStyle.getPropertyValue("--md").trim()) || 2;
     const lg = parseFloat(computedStyle.getPropertyValue("--lg").trim()) || 3;
-    const spaceBetween =
-      parseInt(computedStyle.getPropertyValue("--gap").trim()) || 24;
+    const gap = parseInt(computedStyle.getPropertyValue("--gap").trim()) || 24;
 
-    // Base configuration - sync with CSS-controlled layout
     const config = {
-      // Use breakpoints that match our CSS exactly
       breakpoints: {
-        0: { slidesPerView: xs, spaceBetween: spaceBetween },
-        480: { slidesPerView: sm, spaceBetween: spaceBetween },
-        768: { slidesPerView: md, spaceBetween: spaceBetween },
-        992: { slidesPerView: lg, spaceBetween: spaceBetween },
+        0: { slidesPerView: xs, spaceBetween: gap },
+        480: { slidesPerView: sm, spaceBetween: gap },
+        768: { slidesPerView: md, spaceBetween: gap },
+        992: { slidesPerView: lg, spaceBetween: gap },
       },
       watchSlidesProgress: true,
-      simulateTouch: true,
-      allowTouchMove: true,
       keyboard: { enabled: true, onlyInViewport: true },
       a11y: { enabled: true },
-      // Better handling for decimal slidesPerView values
       watchOverflow: true,
-      normalizeSlideIndex: false,
-      roundLengths: false,
+      // Loop config
+      loop: element.dataset.loop === "true"
     };
 
-    // Configure grab cursor (default: true, can be disabled for clickable content)
-    const grabCursor = element.dataset.grabCursor;
-    if (grabCursor === "false") {
-      config.grabCursor = false;
-    } else {
-      config.grabCursor = true;
-    }
+    if (element.dataset.grabCursor !== "false") config.grabCursor = true;
 
-    // Find the parent component wrapper
+    // Navigation & Pagination
     const componentWrapper = element.closest('[data-slider="component"]');
-
-    // Configure navigation if elements exist
     const nextEl = componentWrapper.querySelector('[data-slider="next"]');
     const prevEl = componentWrapper.querySelector('[data-slider="previous"]');
+    if (nextEl && prevEl) config.navigation = { nextEl, prevEl };
 
-    if (nextEl && prevEl) {
-      config.navigation = { nextEl, prevEl };
-    }
-
-    // Configure pagination if element exists
-    const paginationEl = componentWrapper.querySelector(
-      '[data-slider="pagination"]'
-    );
-
+    const paginationEl = componentWrapper.querySelector('[data-slider="pagination"]');
     if (paginationEl) {
       config.pagination = {
         el: paginationEl,
@@ -189,80 +224,44 @@
       };
     }
 
-    // Configure loop if requested
-    if (element.dataset.loop === "true") {
-      config.loop = true;
-      config.loopFillGroupWithBlank = true;
-
-      // Configure loopAdditionalSlides if specified
-      const loopAdditionalSlides = element.dataset.loopAdditionalSlides;
-      if (loopAdditionalSlides && !isNaN(loopAdditionalSlides)) {
-        config.loopAdditionalSlides = parseInt(loopAdditionalSlides);
-      }
-    }
-
-    // Configure autoplay if requested
-    const autoplayDelay = element.dataset.autoplay;
-    if (autoplayDelay && autoplayDelay !== "false" && !isNaN(autoplayDelay)) {
+    if (element.dataset.autoplay && element.dataset.autoplay !== "false") {
       config.autoplay = {
-        delay: parseInt(autoplayDelay),
+        delay: parseInt(element.dataset.autoplay),
         disableOnInteraction: false,
         pauseOnMouseEnter: true,
       };
     }
 
-    // Configure centered slides if requested
     if (element.dataset.centered === "true") {
       config.centeredSlides = true;
       config.centeredSlidesBounds = true;
     }
 
-    // Configure fade effect if specified
     if (element.dataset.effect === "fade") {
       config.effect = "fade";
       config.fadeEffect = { crossFade: true };
     }
 
-    // Configure speed if specified
-    const speed = element.dataset.speed;
-    if (speed && !isNaN(speed)) {
-      config.speed = parseInt(speed);
-    }
+    if (element.dataset.speed) config.speed = parseInt(element.dataset.speed);
 
     return config;
   }
 
-  // Utility functions for external use
+  // External Control Interface
   window.AttributesSwiper = {
-    // Reinitialize all swipers (useful for dynamic content)
     reinitialize: function () {
       if (typeof Swiper === "undefined") return;
-
-      const swiperElements = document.querySelectorAll(
-        '[data-slider="slider"]'
-      );
+      const swiperElements = document.querySelectorAll('[data-slider="slider"]');
       swiperElements.forEach((element) => {
-        if (element.swiperInstance) {
-          element.swiperInstance.destroy(true, true);
-        }
+        if (element.swiperInstance) element.swiperInstance.destroy(true, true);
       });
-
       setTimeout(() => {
-        swiperElements.forEach((element, index) => {
-          initializeSwiper(element, index);
-        });
+        initializeSwipers();
       }, 50);
     },
-
-    // Get a specific swiper instance
-    getInstance: function (index) {
-      const swiperElements = document.querySelectorAll(
-        '[data-slider="slider"]'
-      );
-      if (swiperElements[index] && swiperElements[index].swiperInstance) {
-        return swiperElements[index].swiperInstance;
-      }
-      return null;
+    getInstance: (index) => {
+      const els = document.querySelectorAll('[data-slider="slider"]');
+      return els[index] ? els[index].swiperInstance : null;
     },
   };
 })();
