@@ -3,10 +3,6 @@
 
   if (typeof Swiper === "undefined") return;
 
-  // -----------------------------------------------------------
-  // Initialization
-  // -----------------------------------------------------------
-
   function initializeSwipers() {
     const swiperElements = document.querySelectorAll('[data-slider="slider"]');
     if (swiperElements.length === 0) return;
@@ -22,10 +18,7 @@
     initializeSwipers();
   }
 
-  // -----------------------------------------------------------
-  // Resize Handling
-  // -----------------------------------------------------------
-
+  // --- Resize Handler ---
   let resizeTimeout;
   let lastWidth = window.innerWidth;
 
@@ -41,18 +34,14 @@
       }
     }, 250);
   }
-
   window.addEventListener("resize", handleResize);
 
-  // -----------------------------------------------------------
-  // Core Logic
-  // -----------------------------------------------------------
-
+  // --- Main Initialization ---
   function initializeSwiper(element, index) {
     try {
       processWebflowCMSLists(element);
 
-      // 1. Get Config & Init Swiper
+      // 1. Init Swiper
       const config = getSwiperConfig(element);
       const swiper = new Swiper(element, config);
       element.swiperInstance = swiper;
@@ -60,42 +49,41 @@
       // 2. Setup Features
       setupHeightCalculation(element, swiper);
       setupLiveCounter(element, swiper);
-      
-      // 3. Setup GLightbox (Pass swiper instance to sync index)
       setupScopedGLightbox(element, swiper);
 
     } catch (error) {
-      console.error("Swiper initialization failed:", error);
+      console.error("Swiper init error:", error);
     }
   }
 
+  // --- GLightbox Integration ---
   function setupScopedGLightbox(element, swiper) {
-    // 1. Find the wrapper to locate the specific trigger for this slider
     const componentWrapper = element.closest('[data-slider="component"]');
     if (!componentWrapper) return;
 
     const triggerBtn = componentWrapper.querySelector('[data-slider="lightbox-trigger"]');
     
-    // 2. Build the Gallery Data from Slides
-    // We select only non-duplicate slides to get the clean list of images
+    // Collect images from non-duplicate slides
     const slides = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)');
     const galleryElements = [];
 
     slides.forEach((slide) => {
       const img = slide.querySelector('img');
       if (img) {
+        // Use the highest resolution available (src or srcset)
+        const imgSrc = img.currentSrc || img.src;
         galleryElements.push({
-          href: img.src || img.currentSrc, // Uses current visible source
+          href: imgSrc,
           type: 'image',
           alt: img.getAttribute('alt') || '',
-          title: img.getAttribute('alt') || '', // Shows alt text as caption
+          title: img.getAttribute('alt') || '', // Caption
         });
       }
     });
 
     if (galleryElements.length === 0) return;
 
-    // 3. Initialize GLightbox with the virtual elements list
+    // Initialize GLightbox with these specific elements
     const lightbox = GLightbox({
       elements: galleryElements,
       touchNavigation: true,
@@ -105,20 +93,18 @@
       closeEffect: 'zoom'
     });
 
-    // 4. Bind Click Event
-    // If trigger exists, open lightbox at the current Swiper index
+    // Bind Trigger
     if (triggerBtn) {
       triggerBtn.style.cursor = 'pointer';
-      triggerBtn.setAttribute('aria-label', 'Open image gallery');
-      
       triggerBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        // swiper.realIndex handles loop mode correctly (0-based index of content)
+        // Open at the current active index
         lightbox.openAt(swiper.realIndex);
       });
     }
   }
 
+  // --- Live Counter ---
   function setupLiveCounter(element, swiper) {
     const component = element.closest('[data-slider="component"]');
     if (!component) return;
@@ -127,23 +113,17 @@
     if (!counterEl) return;
 
     const updateCounter = () => {
-      // Calculate total unique slides (excluding loop duplicates)
-      const slides = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)');
-      const total = slides.length;
-      
-      // realIndex is 0-based
+      const total = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)').length;
       const current = swiper.realIndex + 1;
-
       counterEl.textContent = `${current}/${total}`;
     };
 
     updateCounter();
-    
-    // Update on any change
     swiper.on('slideChange', updateCounter);
     swiper.on('slideChangeTransitionEnd', updateCounter);
   }
 
+  // --- Height Calculation ---
   function setupHeightCalculation(element, swiper) {
     function updateSliderHeight() {
       const slides = element.querySelectorAll('.swiper-slide');
@@ -151,11 +131,10 @@
       
       element.style.height = '';
       let maxHeight = 0;
-      
       slides.forEach(slide => {
         slide.style.height = 'auto';
-        const slideHeight = slide.offsetHeight;
-        if (slideHeight > maxHeight) maxHeight = slideHeight;
+        const h = slide.offsetHeight;
+        if (h > maxHeight) maxHeight = h;
       });
       
       if (maxHeight > 0) element.style.height = maxHeight + 'px';
@@ -168,52 +147,44 @@
     swiper.on('resize', updateSliderHeight);
   }
 
+  // --- Helpers ---
   function processWebflowCMSLists(element) {
-    const webflowSelectors = [".w-dyn-list", ".w-dyn-items", ".w-dyn-item"];
-    webflowSelectors.forEach((selector) => {
-      const webflowElements = element.querySelectorAll(selector);
-      webflowElements.forEach((webflowElement) => {
-        const children = Array.from(webflowElement.childNodes);
-        children.forEach((child) => {
-          webflowElement.parentNode.insertBefore(child, webflowElement);
-        });
-        webflowElement.remove();
+    const selectors = [".w-dyn-list", ".w-dyn-items", ".w-dyn-item"];
+    selectors.forEach((selector) => {
+      element.querySelectorAll(selector).forEach((el) => {
+        const children = Array.from(el.childNodes);
+        children.forEach((child) => el.parentNode.insertBefore(child, el));
+        el.remove();
       });
     });
   }
 
   function getSwiperConfig(element) {
-    const computedStyle = getComputedStyle(element);
-    const xs = parseFloat(computedStyle.getPropertyValue("--xs").trim()) || 1;
-    const sm = parseFloat(computedStyle.getPropertyValue("--sm").trim()) || 1;
-    const md = parseFloat(computedStyle.getPropertyValue("--md").trim()) || 2;
-    const lg = parseFloat(computedStyle.getPropertyValue("--lg").trim()) || 3;
-    const gap = parseInt(computedStyle.getPropertyValue("--gap").trim()) || 24;
-
+    const styles = getComputedStyle(element);
+    const getVar = (name, fallback) => parseFloat(styles.getPropertyValue(name).trim()) || fallback;
+    
     const config = {
       breakpoints: {
-        0: { slidesPerView: xs, spaceBetween: gap },
-        480: { slidesPerView: sm, spaceBetween: gap },
-        768: { slidesPerView: md, spaceBetween: gap },
-        992: { slidesPerView: lg, spaceBetween: gap },
+        0:   { slidesPerView: getVar("--xs", 1), spaceBetween: getVar("--gap", 24) },
+        480: { slidesPerView: getVar("--sm", 1), spaceBetween: getVar("--gap", 24) },
+        768: { slidesPerView: getVar("--md", 2), spaceBetween: getVar("--gap", 24) },
+        992: { slidesPerView: getVar("--lg", 3), spaceBetween: getVar("--gap", 24) },
       },
       watchSlidesProgress: true,
       keyboard: { enabled: true, onlyInViewport: true },
       a11y: { enabled: true },
       watchOverflow: true,
-      // Loop config
       loop: element.dataset.loop === "true"
     };
 
     if (element.dataset.grabCursor !== "false") config.grabCursor = true;
 
-    // Navigation & Pagination
-    const componentWrapper = element.closest('[data-slider="component"]');
-    const nextEl = componentWrapper.querySelector('[data-slider="next"]');
-    const prevEl = componentWrapper.querySelector('[data-slider="previous"]');
+    const component = element.closest('[data-slider="component"]');
+    const nextEl = component.querySelector('[data-slider="next"]');
+    const prevEl = component.querySelector('[data-slider="previous"]');
     if (nextEl && prevEl) config.navigation = { nextEl, prevEl };
 
-    const paginationEl = componentWrapper.querySelector('[data-slider="pagination"]');
+    const paginationEl = component.querySelector('[data-slider="pagination"]');
     if (paginationEl) {
       config.pagination = {
         el: paginationEl,
@@ -231,7 +202,7 @@
         pauseOnMouseEnter: true,
       };
     }
-
+    
     if (element.dataset.centered === "true") {
       config.centeredSlides = true;
       config.centeredSlidesBounds = true;
@@ -241,27 +212,23 @@
       config.effect = "fade";
       config.fadeEffect = { crossFade: true };
     }
-
+    
     if (element.dataset.speed) config.speed = parseInt(element.dataset.speed);
 
     return config;
   }
 
-  // External Control Interface
   window.AttributesSwiper = {
     reinitialize: function () {
       if (typeof Swiper === "undefined") return;
-      const swiperElements = document.querySelectorAll('[data-slider="slider"]');
-      swiperElements.forEach((element) => {
-        if (element.swiperInstance) element.swiperInstance.destroy(true, true);
+      document.querySelectorAll('[data-slider="slider"]').forEach((el) => {
+        if (el.swiperInstance) el.swiperInstance.destroy(true, true);
       });
-      setTimeout(() => {
-        initializeSwipers();
-      }, 50);
+      setTimeout(initializeSwipers, 50);
     },
-    getInstance: (index) => {
+    getInstance: (i) => {
       const els = document.querySelectorAll('[data-slider="slider"]');
-      return els[index] ? els[index].swiperInstance : null;
+      return els[i] ? els[i].swiperInstance : null;
     },
   };
 })();
