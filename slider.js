@@ -41,12 +41,10 @@
     try {
       processWebflowCMSLists(element);
 
-      // 1. Init Swiper
       const config = getSwiperConfig(element);
       const swiper = new Swiper(element, config);
       element.swiperInstance = swiper;
 
-      // 2. Setup Features
       setupHeightCalculation(element, swiper);
       setupLiveCounter(element, swiper);
       setupScopedGLightbox(element, swiper);
@@ -63,6 +61,7 @@
 
     const triggerBtn = componentWrapper.querySelector('[data-slider="lightbox-trigger"]');
     
+    // Collect images
     const slides = element.querySelectorAll('.swiper-slide:not(.swiper-slide-duplicate)');
     const galleryElements = [];
 
@@ -81,37 +80,33 @@
 
     if (galleryElements.length === 0) return;
 
-    // Phosphor Icons (Fill Variant)
-    const iconPrev = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M163.06,40.61a8,8,0,0,0-8.72,1.73l-80,80a8,8,0,0,0,0,11.32l80,80A8,8,0,0,0,168,208V48A8,8,0,0,0,163.06,40.61Z"/></svg>`;
-    const iconNext = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M181.66,122.34l-80-80A8,8,0,0,0,88,48V208a8,8,0,0,0,13.66,5.66l80-80A8,8,0,0,0,181.66,122.34Z"/></svg>`;
-    const iconClose = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm37.66,130.34a8,8,0,0,1-11.32,11.32L128,139.31l-26.34,26.35a8,8,0,0,1-11.32-11.32L116.69,128,90.34,101.66a8,8,0,0,1,11.32-11.32L128,116.69l26.34-26.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg>`;
-
+    // Init GLightbox with Custom Animation
     const lightbox = GLightbox({
       elements: galleryElements,
       touchNavigation: true,
       loop: true,
       zoomable: true,
-      openEffect: 'zoom',
-      closeEffect: 'zoom',
-      // Inject Custom Icons
-      prevHtml: iconPrev,
-      nextHtml: iconNext,
-      closeHtml: iconClose
+      // Custom Animation Config
+      openEffect: 'subtle-zoom',
+      closeEffect: 'subtle-zoom',
+      cssEffects: {
+        'subtle-zoom': { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
+      }
     });
 
     // Sync: Lightbox -> Swiper
     lightbox.on('slide_changed', ({ current }) => {
-      // Synchronize Swiper to the index currently viewed in Lightbox
       if (swiper.params.loop) {
-        swiper.slideToLoop(current.index, 0); // 0ms for instant update
+        swiper.slideToLoop(current.index, 0); 
       } else {
         swiper.slideTo(current.index, 0);
       }
     });
 
-    // Sync: Swiper -> Lightbox (via Trigger)
+    // Sync: Swiper -> Lightbox
     if (triggerBtn) {
       triggerBtn.style.cursor = 'pointer';
+      triggerBtn.setAttribute('aria-label', 'Open gallery');
       triggerBtn.addEventListener('click', (e) => {
         e.preventDefault();
         lightbox.openAt(swiper.realIndex);
