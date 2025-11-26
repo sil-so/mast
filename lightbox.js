@@ -18,6 +18,11 @@
       
       if (images.length === 0) return;
 
+      images.forEach(img => {
+          img.style.height = 'auto'; // Override inline styles
+          img.parentElement.style.height = 'auto'; // Ensure parent div isn't locked
+      });
+      
       // 1. Build Gallery Data
       const galleryElements = Array.from(images).map((img) => {
         // Prefer currentSrc for responsive sizing, fallback to src
