@@ -25,7 +25,6 @@
       const galleryElements = Array.from(images).map((img) => {
         const src = img.currentSrc || img.src;
         const cleanSrc = src.startsWith('data:') ? img.dataset.src || img.src : src;
-
         return {
           href: cleanSrc,
           type: 'image',
@@ -47,7 +46,7 @@
         openEffect: 'subtle-zoom',
         closeEffect: 'subtle-zoom',
         cssEfects: {
-          subtle-zoom: { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
+          "subtle-zoom": { in: 'subtle-zoomIn', out: 'subtle-zoomOut' }
         }
       });
 
