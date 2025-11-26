@@ -36,7 +36,14 @@
         const badge = document.createElement('div');
         badge.classList.add('stack-badge');
         badge.textContent = `+${images.length - 1}`;
-        stack.appendChild(badge);
+
+        const card = stack.closest('.card');
+
+        if (card) {
+          card.appendChild(badge);
+        } else {
+          stack.appendChild(badge);
+        }
       }
 
       const lightbox = GLightbox({
