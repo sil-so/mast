@@ -36,9 +36,26 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   // --- Initialization ---
-
+  
   const imgLoad = imagesLoaded(masonryContainer);
-
+  
+  // Debounced layout function to avoid excessive recalculations
+  let layoutTimer;
+  const debouncedLayout = () => {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(() => {
+    if (iso) {
+      // Optional: disable transition during layout recalc
+      masonryContainer.style.transition = 'opacity 400ms ease';
+      iso.layout();
+      // Re-enable after layout completes
+      requestAnimationFrame(() => {
+        masonryContainer.style.transition = 'opacity 400ms ease, height 0.4s ease';
+      });
+    }
+  }, 100);
+};
+  
   imgLoad.on('done', () => {
     iso = new Isotope(masonryContainer, {
       itemSelector: '.masonry-item',
@@ -49,12 +66,22 @@ document.addEventListener('DOMContentLoaded', () => {
       hiddenStyle: { opacity: 0 },
       stagger: 50
     });
-
+  
     masonryContainer.classList.add(CLASSES.loaded);
     window.isoInstance = iso;
-
+  
     // Set initial view state
     updateActiveViewButton(getCurrentDefaultCols());
+
+    // Catches images that load after initialization
+    imgLoad.on('progress', debouncedLayout);
+  
+    // KEY FIX: Listen for ANY image load event in the container (captures lazy loads)
+    masonryContainer.addEventListener('load', (e) => {
+      if (e.target.tagName === 'IMG') {
+        debouncedLayout();
+      }
+    }, true); // 'true' = capture phase, catches all descendant image loads
   });
 
   // --- View Switchers ---
