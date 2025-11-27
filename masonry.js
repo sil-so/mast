@@ -39,22 +39,19 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const imgLoad = imagesLoaded(masonryContainer);
   
-  // Debounced layout function to avoid excessive recalculations
   let layoutTimer;
-  const debouncedLayout = () => {
-  clearTimeout(layoutTimer);
-  layoutTimer = setTimeout(() => {
-    if (iso) {
-      // Optional: disable transition during layout recalc
-      masonryContainer.style.transition = 'opacity 400ms ease';
+  const debouncedLayout = (immediate = false) => {
+    clearTimeout(layoutTimer);
+    if (immediate && iso) {
       iso.layout();
-      // Re-enable after layout completes
-      requestAnimationFrame(() => {
-        masonryContainer.style.transition = 'opacity 400ms ease, height 0.4s ease';
-      });
+      return;
     }
-  }, 100);
-};
+    layoutTimer = setTimeout(() => {
+      if (iso) {
+        iso.layout();
+      }
+    }, 100);
+  };
   
   imgLoad.on('done', () => {
     iso = new Isotope(masonryContainer, {
