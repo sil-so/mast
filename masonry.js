@@ -182,27 +182,60 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Dynamic Content Observer ---
   
+  // --- Testimonial Read More Handler ---
   document.addEventListener('click', (e) => {
     const readMoreBtn = e.target.closest('.testimonial-toggle');
     if (!readMoreBtn) return;
-
-    const wrapper = readMoreBtn.closest('.masonry-item')?.querySelector('.testimonial-wrapper');
+  
+    e.preventDefault();
+  
+    const component = readMoreBtn.closest('.testimonial-component');
+    const wrapper = component?.querySelector('.testimonial-wrapper');
     if (!wrapper) return;
-
-    // Prevent multiple observers stacking up
-    if (wrapper._isoObserver) wrapper._isoObserver.disconnect();
-
-    const observer = new MutationObserver(() => {
-      if (window.isoInstance) window.isoInstance.layout();
-    });
+  
+    // Get the actual content height
+    const currentHeight = wrapper.offsetHeight;
     
-    observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
-    wrapper._isoObserver = observer; // Store reference on element
-
-    // Cleanup after transition
+    // Temporarily set to auto to measure full height
+    wrapper.style.height = 'auto';
+    const targetHeight = wrapper.offsetHeight;
+    
+    // Reset to current height before animating
+    wrapper.style.height = currentHeight + 'px';
+  
+    // Force reflow
+    wrapper.offsetHeight;
+  
+    // Trigger Isotope layout updates during expansion
+    let frameCount = 0;
+    const maxFrames = 20; // ~400ms at 60fps
+    
+    const updateLayout = () => {
+      if (iso) iso.layout();
+      frameCount++;
+      if (frameCount < maxFrames) {
+        requestAnimationFrame(updateLayout);
+      }
+    };
+  
+    // Start continuous layout updates
+    requestAnimationFrame(updateLayout);
+  
+    // Animate to target height
+    requestAnimationFrame(() => {
+      wrapper.style.height = targetHeight + 'px';
+      wrapper.classList.add('is-expanded');
+    });
+  
+    // Hide button after a brief delay
     setTimeout(() => {
-      observer.disconnect();
-      delete wrapper._isoObserver;
-    }, 600);
+      readMoreBtn.classList.add('is-hidden');
+    }, 200);
+  
+    // Clean up: set to auto after transition completes
+    setTimeout(() => {
+      wrapper.style.height = 'auto';
+      if (iso) iso.layout(); // Final layout call
+    }, 450); // Slightly longer than transition duration
   });
 });
