@@ -39,19 +39,22 @@ document.addEventListener('DOMContentLoaded', () => {
   
   const imgLoad = imagesLoaded(masonryContainer);
   
+  // Debounced layout function to avoid excessive recalculations
   let layoutTimer;
-  const debouncedLayout = (immediate = false) => {
-    clearTimeout(layoutTimer);
-    if (immediate && iso) {
+  const debouncedLayout = () => {
+  clearTimeout(layoutTimer);
+  layoutTimer = setTimeout(() => {
+    if (iso) {
+      // Optional: disable transition during layout recalc
+      masonryContainer.style.transition = 'opacity 400ms ease';
       iso.layout();
-      return;
+      // Re-enable after layout completes
+      requestAnimationFrame(() => {
+        masonryContainer.style.transition = 'opacity 400ms ease, height 0.4s ease';
+      });
     }
-    layoutTimer = setTimeout(() => {
-      if (iso) {
-        iso.layout();
-      }
-    }, 100);
-  };
+  }, 100);
+};
   
   imgLoad.on('done', () => {
     iso = new Isotope(masonryContainer, {
@@ -182,60 +185,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- Dynamic Content Observer ---
   
-  // --- Testimonial Read More Handler ---
   document.addEventListener('click', (e) => {
     const readMoreBtn = e.target.closest('.testimonial-toggle');
     if (!readMoreBtn) return;
-  
-    e.preventDefault();
-  
-    const component = readMoreBtn.closest('.testimonial-component');
-    const wrapper = component?.querySelector('.testimonial-wrapper');
+
+    const wrapper = readMoreBtn.closest('.masonry-item')?.querySelector('.testimonial-wrapper');
     if (!wrapper) return;
-  
-    // Get the actual content height
-    const currentHeight = wrapper.offsetHeight;
-    
-    // Temporarily set to auto to measure full height
-    wrapper.style.height = 'auto';
-    const targetHeight = wrapper.offsetHeight;
-    
-    // Reset to current height before animating
-    wrapper.style.height = currentHeight + 'px';
-  
-    // Force reflow
-    wrapper.offsetHeight;
-  
-    // Trigger Isotope layout updates during expansion
-    let frameCount = 0;
-    const maxFrames = 20; // ~400ms at 60fps
-    
-    const updateLayout = () => {
-      if (iso) iso.layout();
-      frameCount++;
-      if (frameCount < maxFrames) {
-        requestAnimationFrame(updateLayout);
-      }
-    };
-  
-    // Start continuous layout updates
-    requestAnimationFrame(updateLayout);
-  
-    // Animate to target height
-    requestAnimationFrame(() => {
-      wrapper.style.height = targetHeight + 'px';
-      wrapper.classList.add('is-expanded');
+
+    // Prevent multiple observers stacking up
+    if (wrapper._isoObserver) wrapper._isoObserver.disconnect();
+
+    const observer = new MutationObserver(() => {
+      if (window.isoInstance) window.isoInstance.layout();
     });
-  
-    // Hide button after a brief delay
+    
+    observer.observe(wrapper, { attributes: true, attributeFilter: ['style'] });
+    wrapper._isoObserver = observer; // Store reference on element
+
+    // Cleanup after transition
     setTimeout(() => {
-      readMoreBtn.classList.add('is-hidden');
-    }, 200);
-  
-    // Clean up: set to auto after transition completes
-    setTimeout(() => {
-      wrapper.style.height = 'auto';
-      if (iso) iso.layout(); // Final layout call
-    }, 450); // Slightly longer than transition duration
+      observer.disconnect();
+      delete wrapper._isoObserver;
+    }, 600);
   });
 });
