@@ -18,7 +18,9 @@
       const dialogs = document.querySelectorAll("dialog");
       if (dialogs.length === 0) return;
 
+      // Create backdrop element (but don't show it yet)
       getOrCreateBackdrop();
+      
       document.addEventListener("click", handleModalClicks);
       dialogs.forEach(setupDialogListeners);
       dialogs.forEach(handleAutoOpenModal);
@@ -30,6 +32,7 @@
   function handleModalClicks(e) {
     const target = e.target;
 
+    // 1. Handle Modal-to-Modal Transitions
     const transitionTrigger = target.closest("[data-transition-to-modal]");
     if (transitionTrigger) {
       e.preventDefault();
@@ -45,6 +48,7 @@
       return;
     }
 
+    // 2. Handle Open Triggers
     const openTrigger = target.closest("[data-open-modal]");
     if (openTrigger) {
       e.preventDefault();
@@ -53,17 +57,18 @@
       const dialog = document.getElementById(modalId);
 
       if (dialog && dialog.tagName === "DIALOG") {
-        openModalWithBackdrop(dialog);
+        openModal(dialog);
       }
       return;
     }
 
+    // 3. Handle Close Buttons
     const closeButton = target.closest("dialog button:not([data-transition-to-modal])");
     if (closeButton) {
       e.preventDefault();
       const dialog = target.closest("dialog");
       if (dialog) {
-        closeModalWithBackdrop(dialog);
+        closeModal(dialog);
       }
       return;
     }
@@ -72,7 +77,7 @@
   function setupDialogListeners(dialog) {
     dialog.addEventListener("click", function (e) {
       if (e.target === dialog) {
-        closeModalWithBackdrop(dialog);
+        closeModal(dialog);
       }
     });
 
@@ -82,23 +87,28 @@
     });
   }
 
-  function openModalWithBackdrop(dialog) {
-    const backdrop = getOrCreateBackdrop();
-    
-    backdrop.classList.remove("no-transition");
+  // ============================================
+  // NORMAL MODAL OPEN/CLOSE (Native backdrop)
+  // ============================================
+
+  function openModal(dialog) {
+    // Normal open - use native backdrop only
     dialog.classList.remove("transitioned");
-    
-    backdrop.classList.add("visible");
     dialog.showModal();
     dialog.scrollTop = 0;
   }
 
-  function closeModalWithBackdrop(dialog) {
+  function closeModal(dialog) {
     const backdrop = getOrCreateBackdrop();
+    const wasTransitioned = dialog.classList.contains("transitioned");
     
     dialog.classList.add("closing");
     
-    backdrop.classList.remove("visible");
+    // Only fade custom backdrop if this modal was opened via transition
+    if (wasTransitioned) {
+      backdrop.classList.remove("no-transition");
+      backdrop.classList.remove("visible");
+    }
     
     dialog.addEventListener("animationend", () => {
       dialog.classList.remove("closing", "transitioned");
@@ -106,18 +116,24 @@
     }, { once: true });
   }
 
+  // ============================================
+  // MODAL-TO-MODAL TRANSITION (Custom backdrop)
+  // ============================================
+
   function transitionBetweenModals(fromDialog, toDialog) {
     const backdrop = getOrCreateBackdrop();
     
     toDialog.dataset.returnToModal = fromDialog.id;
     
+    // Show custom backdrop instantly (no transition)
     backdrop.classList.add("no-transition");
     backdrop.classList.add("visible");
     
+    // Force reflow
     backdrop.offsetHeight;
     
+    // Mark source as transitioning (hides its native backdrop)
     fromDialog.classList.remove("transitioned");
-    
     fromDialog.classList.add("transitioning-out");
     
     fromDialog.addEventListener("animationend", function exitHandler(e) {
@@ -126,10 +142,12 @@
       fromDialog.classList.remove("transitioning-out");
       fromDialog.close();
       
+      // Open target modal
       toDialog.classList.add("transitioning-in");
       toDialog.showModal();
       toDialog.scrollTop = 0;
       
+      // Trigger entrance animation
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           toDialog.classList.add("animate-content");
@@ -141,14 +159,19 @@
     toDialog.addEventListener("animationend", function enterHandler(e) {
       if (e.target !== toDialog) return;
       
+      // Mark as transitioned - keeps using custom backdrop
       toDialog.classList.add("transitioned");
-      
       toDialog.classList.remove("transitioning-in", "animate-content");
       
+      // Allow transitions again on backdrop
       backdrop.classList.remove("no-transition");
       
     }, { once: true });
   }
+
+  // ============================================
+  // BACK NAVIGATION
+  // ============================================
 
   function transitionBack(currentDialog) {
     const previousModalId = currentDialog.dataset.returnToModal;
@@ -162,6 +185,10 @@
     return true;
   }
 
+  // ============================================
+  // AUTO-OPEN & COOLDOWN
+  // ============================================
+
   function handleAutoOpenModal(dialog) {
     const shouldOpenOnLoad = dialog.dataset.modalOpenOnLoad === "true";
     if (!shouldOpenOnLoad) return;
@@ -172,7 +199,7 @@
 
     if (cooldownDays > 0 && isInCooldown(modalId)) return;
 
-    openModalWithBackdrop(dialog);
+    openModal(dialog);
   }
 
   function handleModalClose(dialog) {
