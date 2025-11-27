@@ -3,7 +3,6 @@
 
   if (!document.querySelector("dialog")) return;
 
-  // Create persistent backdrop element
   function getOrCreateBackdrop() {
     let backdrop = document.getElementById("modal-backdrop");
     if (!backdrop) {
@@ -19,9 +18,7 @@
       const dialogs = document.querySelectorAll("dialog");
       if (dialogs.length === 0) return;
 
-      // Create backdrop on init
       getOrCreateBackdrop();
-
       document.addEventListener("click", handleModalClicks);
       dialogs.forEach(setupDialogListeners);
       dialogs.forEach(handleAutoOpenModal);
@@ -33,7 +30,6 @@
   function handleModalClicks(e) {
     const target = e.target;
 
-    // 1. Handle Modal-to-Modal Transitions
     const transitionTrigger = target.closest("[data-transition-to-modal]");
     if (transitionTrigger) {
       e.preventDefault();
@@ -45,13 +41,10 @@
 
       if (currentDialog && targetDialog && targetDialog.tagName === "DIALOG") {
         transitionBetweenModals(currentDialog, targetDialog);
-      } else {
-        console.warn(`Transition target not found: ${targetModalId}`);
       }
       return;
     }
 
-    // 2. Handle Open Triggers
     const openTrigger = target.closest("[data-open-modal]");
     if (openTrigger) {
       e.preventDefault();
@@ -61,13 +54,10 @@
 
       if (dialog && dialog.tagName === "DIALOG") {
         openModalWithBackdrop(dialog);
-      } else {
-        console.warn(`No dialog found with ID: ${modalId}`);
       }
       return;
     }
 
-    // 3. Handle Close Buttons (Any button inside dialog without transition attribute)
     const closeButton = target.closest("dialog button:not([data-transition-to-modal])");
     if (closeButton) {
       e.preventDefault();
@@ -80,7 +70,6 @@
   }
 
   function setupDialogListeners(dialog) {
-    // Click outside (backdrop area) to close
     dialog.addEventListener("click", function (e) {
       if (e.target === dialog) {
         closeModalWithBackdrop(dialog);
@@ -88,21 +77,18 @@
     });
 
     dialog.addEventListener("close", function () {
+      dialog.classList.remove("transitioned");
       handleModalClose(dialog);
     });
   }
 
-  // ============================================
-  // MODAL OPEN/CLOSE WITH CUSTOM BACKDROP
-  // ============================================
-
   function openModalWithBackdrop(dialog) {
     const backdrop = getOrCreateBackdrop();
     
-    // Show backdrop with animation
-    backdrop.classList.remove("hiding", "static");
-    backdrop.classList.add("visible");
+    backdrop.classList.remove("no-transition");
+    dialog.classList.remove("transitioned");
     
+    backdrop.classList.add("visible");
     dialog.showModal();
     dialog.scrollTop = 0;
   }
@@ -111,30 +97,27 @@
     const backdrop = getOrCreateBackdrop();
     
     dialog.classList.add("closing");
-    backdrop.classList.add("hiding");
+    
+    backdrop.classList.remove("visible");
     
     dialog.addEventListener("animationend", () => {
-      dialog.classList.remove("closing");
+      dialog.classList.remove("closing", "transitioned");
       dialog.close();
-      backdrop.classList.remove("visible", "hiding");
     }, { once: true });
   }
-
-  // ============================================
-  // MODAL-TO-MODAL TRANSITION
-  // ============================================
 
   function transitionBetweenModals(fromDialog, toDialog) {
     const backdrop = getOrCreateBackdrop();
     
-    // Store reference for "back" functionality
     toDialog.dataset.returnToModal = fromDialog.id;
     
-    // Ensure backdrop stays visible (static = no animation)
-    backdrop.classList.remove("hiding");
-    backdrop.classList.add("visible", "static");
+    backdrop.classList.add("no-transition");
+    backdrop.classList.add("visible");
     
-    // Phase 1: Animate OUT the current modal content
+    backdrop.offsetHeight;
+    
+    fromDialog.classList.remove("transitioned");
+    
     fromDialog.classList.add("transitioning-out");
     
     fromDialog.addEventListener("animationend", function exitHandler(e) {
@@ -143,29 +126,29 @@
       fromDialog.classList.remove("transitioning-out");
       fromDialog.close();
       
-      // Phase 2: Open and animate IN the new modal
       toDialog.classList.add("transitioning-in");
       toDialog.showModal();
       toDialog.scrollTop = 0;
       
-      // Trigger the content animation after a frame
       requestAnimationFrame(() => {
-        toDialog.classList.add("animate-content");
+        requestAnimationFrame(() => {
+          toDialog.classList.add("animate-content");
+        });
       });
       
     }, { once: true });
     
-    // Clean up after entrance animation
     toDialog.addEventListener("animationend", function enterHandler(e) {
       if (e.target !== toDialog) return;
+      
+      toDialog.classList.add("transitioned");
+      
       toDialog.classList.remove("transitioning-in", "animate-content");
-      backdrop.classList.remove("static");
+      
+      backdrop.classList.remove("no-transition");
+      
     }, { once: true });
   }
-
-  // ============================================
-  // BACK NAVIGATION
-  // ============================================
 
   function transitionBack(currentDialog) {
     const previousModalId = currentDialog.dataset.returnToModal;
@@ -174,16 +157,10 @@
     const previousDialog = document.getElementById(previousModalId);
     if (!previousDialog) return false;
     
-    // Clean up the reference
     delete currentDialog.dataset.returnToModal;
-    
     transitionBetweenModals(currentDialog, previousDialog);
     return true;
   }
-
-  // ============================================
-  // AUTO-OPEN & COOLDOWN
-  // ============================================
 
   function handleAutoOpenModal(dialog) {
     const shouldOpenOnLoad = dialog.dataset.modalOpenOnLoad === "true";
@@ -242,13 +219,11 @@
     }
   }
 
-  // Initialize
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initModals);
   } else {
     initModals();
   }
 
-  // Expose transition back function globally (optional)
   window.modalTransitionBack = transitionBack;
 })();
