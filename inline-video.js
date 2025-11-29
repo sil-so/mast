@@ -1,621 +1,693 @@
 class VideoLibrary {
-    constructor(options = {}) {
-      this.options = {
-        rootMargin: options.rootMargin || "100px",
-        threshold: options.threshold || 0,
-        scrollTriggerThreshold: options.scrollTriggerThreshold || 0.5,
-        debug: options.debug || false,
-        ...options,
-      };
+  constructor(options = {}) {
+    this.options = {
+      rootMargin: options.rootMargin || "100px",
+      threshold: options.threshold || 0,
+      scrollTriggerThreshold: options.scrollTriggerThreshold || 0.5,
+      cardHoverBreakpoint: options.cardHoverBreakpoint || 991,
+      debug: options.debug || false,
+      ...options,
+    };
 
-      this.prefersReducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)"
-      ).matches;
-      this.videoObserver = null;
-      this.scrollObservers = new Map();
-      this.pictureElementCache = new WeakMap();
-      this.eventListeners = new WeakMap();
-      this.resizeHandler = null;
-      this.resizeTimeout = null;
+    this.prefersReducedMotion = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    this.videoObserver = null;
+    this.scrollObservers = new Map();
+    this.cardHoverVideos = new Map();
+    this.cardHoverPlayState = new WeakMap();
+    this.pictureElementCache = new WeakMap();
+    this.eventListeners = new WeakMap();
+    this.resizeHandler = null;
+    this.resizeTimeout = null;
+    this.lastWindowWidth = window.innerWidth;
 
-      this.init();
+    this.init();
+  }
+
+  init() {
+    const videos = document.querySelectorAll("video[data-video]");
+    if (videos.length === 0) {
+      return;
     }
-  
-    init() {
-      // Early exit if no videos are present - optimizes performance for pages without videos
-      const videos = document.querySelectorAll("video[data-video]");
-      if (videos.length === 0) {
+
+    if (this.prefersReducedMotion) {
+      console.log("User prefers reduced motion. Videos will not auto-play.");
+    }
+
+    this.removeDesktopOnlyVideos();
+    this.setupLazyLoading();
+    this.setupVideoControls();
+    this.setupHoverPlay();
+    this.setupCardHover();
+
+    const hasDesktopOnlyVideos =
+      document.querySelectorAll('video[data-video-desktop-only="true"]')
+        .length > 0;
+    const hasCardHoverVideos = this.cardHoverVideos.size > 0;
+
+    if (hasDesktopOnlyVideos || hasCardHoverVideos) {
+      this.resizeHandler = () => {
+        if (this.resizeTimeout) {
+          clearTimeout(this.resizeTimeout);
+        }
+        this.resizeTimeout = setTimeout(() => {
+          const currentWidth = window.innerWidth;
+          const breakpoint = this.options.cardHoverBreakpoint;
+          const crossedBreakpoint =
+            (this.lastWindowWidth <= breakpoint && currentWidth > breakpoint) ||
+            (this.lastWindowWidth > breakpoint && currentWidth <= breakpoint);
+
+          if (hasDesktopOnlyVideos) {
+            this.removeDesktopOnlyVideos();
+          }
+          if (hasCardHoverVideos && crossedBreakpoint) {
+            this.handleCardHoverResize();
+          }
+
+          this.lastWindowWidth = currentWidth;
+        }, 150);
+      };
+      window.addEventListener("resize", this.resizeHandler);
+    }
+  }
+
+  getComponentContainer(video) {
+    return (
+      video.closest('[data-video="component"]') || video.parentElement || null
+    );
+  }
+
+  removeDesktopOnlyVideos() {
+    const desktopOnlyVideos = document.querySelectorAll(
+      'video[data-video-desktop-only="true"]',
+    );
+    const isSmallScreen = window.innerWidth <= 991;
+
+    desktopOnlyVideos.forEach((video) => {
+      const videoContainer = this.getComponentContainer(video);
+      const playbackWrapper = videoContainer
+        ? videoContainer.querySelector('[data-video-playback="wrapper"]')
+        : null;
+
+      if (isSmallScreen) {
+        video.style.display = "none";
+        this.showPictureElement(video);
+
+        if (playbackWrapper) {
+          playbackWrapper.style.display = "none";
+          playbackWrapper.style.visibility = "hidden";
+          playbackWrapper.setAttribute("aria-hidden", "true");
+        }
+      } else {
+        video.style.display = "";
+        this.hidePictureElement(video);
+
+        if (playbackWrapper) {
+          playbackWrapper.style.display = "";
+          playbackWrapper.style.visibility = "";
+          playbackWrapper.setAttribute("aria-hidden", "false");
+        }
+      }
+    });
+  }
+
+  setupLazyLoading() {
+    const videos = document.querySelectorAll("video[data-video]");
+
+    if (videos.length === 0) return;
+
+    const observerOptions = {
+      root: null,
+      rootMargin: this.options.rootMargin,
+      threshold: this.options.threshold,
+    };
+
+    const videoObserverCallback = (entries, observer) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const video = entry.target;
+          this.lazyLoadVideo(video)
+            .then(() => observer.unobserve(video))
+            .catch(console.error);
+        }
+      });
+    };
+
+    this.videoObserver = new IntersectionObserver(
+      videoObserverCallback,
+      observerOptions,
+    );
+
+    videos.forEach((video) => {
+      this.videoObserver.observe(video);
+
+      if (video.closest('.card[data-video-card-hover="true"]')) {
         return;
       }
-  
-      if (this.prefersReducedMotion) {
-        console.log("User prefers reduced motion. Videos will not auto-play.");
+
+      const scrollInPlay =
+        video.getAttribute("data-video-scroll-in-play") === "true";
+      const hoverPlay = video.getAttribute("data-video-hover") === "true";
+
+      if (hoverPlay && scrollInPlay) {
+        this.setupScrollInPlayForHover(video);
+      } else if (hoverPlay) {
+      } else if (this.prefersReducedMotion) {
+        video.pause();
+      } else if (scrollInPlay) {
+        this.setupScrollInPlay(video);
+      } else {
+        this.setupAutoplay(video);
       }
-  
-      // Remove desktop-only videos on small screens
-      this.removeDesktopOnlyVideos();
-  
-      // Initialize video functionality
-      this.setupLazyLoading();
-      this.setupVideoControls();
-      this.setupHoverPlay();
-      // Only add resize listener if desktop-only videos are present
-      const desktopOnlyVideos = document.querySelectorAll(
-        'video[data-video-desktop-only="true"]'
-      );
-      if (desktopOnlyVideos.length > 0) {
-        // Throttled resize handler for better performance
-        this.resizeHandler = () => {
-          if (this.resizeTimeout) {
-            clearTimeout(this.resizeTimeout);
-          }
-          this.resizeTimeout = setTimeout(() => {
-            this.removeDesktopOnlyVideos();
-          }, 150);
-        };
-        window.addEventListener("resize", this.resizeHandler);
-      }
-    }
+    });
+  }
 
-    /**
-     * Get the component container for a given video
-     * @param {HTMLVideoElement} video
-     * @returns {HTMLElement|null}
-     */
-    getComponentContainer(video) {
-      return (
-        video.closest('[data-video="component"]') ||
-        video.parentElement ||
-        null
-      );
-    }
+  lazyLoadVideo(video) {
+    return new Promise((resolve, reject) => {
+      const source = video.querySelector("source[data-src]");
+      if (source && !source.src) {
+        source.src = source.getAttribute("data-src");
+        video.load();
 
-    /**
-     * Remove desktop-only videos on small screens and hide their controls
-     */
-    removeDesktopOnlyVideos() {
-      // Query once instead of twice for better performance
-      const desktopOnlyVideos = document.querySelectorAll('video[data-video-desktop-only="true"]');
-      const isSmallScreen = window.innerWidth <= 991;
-
-      desktopOnlyVideos.forEach((video) => {
-        const videoContainer = this.getComponentContainer(video);
-        const playbackWrapper = videoContainer
-          ? videoContainer.querySelector('[data-video-playback="wrapper"]')
-          : null;
-
-        if (isSmallScreen) {
-          // Hide the video but show the picture
-          video.style.display = "none";
-          this.showPictureElement(video);
-
-          // Hide associated playback controls wrapper
-          if (playbackWrapper) {
-            playbackWrapper.style.display = "none";
-            playbackWrapper.style.visibility = "hidden";
-            playbackWrapper.setAttribute("aria-hidden", "true");
-          }
-        } else {
-          // Show videos and controls on larger screens
-          video.style.display = "";
-          this.hidePictureElement(video);
-
-          // Show associated playback controls wrapper
-          if (playbackWrapper) {
-            playbackWrapper.style.display = "";
-            playbackWrapper.style.visibility = "";
-            playbackWrapper.setAttribute("aria-hidden", "false");
-          }
-        }
-      });
-    }
-  
-    /**
-     * Setup lazy loading for all videos with data-video attribute
-     */
-    setupLazyLoading() {
-      const videos = document.querySelectorAll("video[data-video]");
-  
-      if (videos.length === 0) return;
-  
-      const observerOptions = {
-        root: null,
-        rootMargin: this.options.rootMargin,
-        threshold: this.options.threshold,
-      };
-  
-      // Lazy load videos when they intersect
-      const videoObserverCallback = (entries, observer) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const video = entry.target;
-            this.lazyLoadVideo(video)
-              .then(() => observer.unobserve(video))
-              .catch(console.error);
-          }
+        video.addEventListener("canplaythrough", function onCanPlayThrough() {
+          video.removeEventListener("canplaythrough", onCanPlayThrough);
+          resolve();
         });
-      };
-  
-      this.videoObserver = new IntersectionObserver(
-        videoObserverCallback,
-        observerOptions
-      );
-  
-      // Start observing videos for lazy loading and handle autoplay behavior
-      videos.forEach((video) => {
-        const scrollInPlay =
-          video.getAttribute("data-video-scroll-in-play") === "true";
-        const hoverPlay = video.getAttribute("data-video-hover") === "true";
 
-        // Always observe for lazy loading
-        this.videoObserver.observe(video);
+        video.addEventListener("error", function onError() {
+          video.removeEventListener("error", onError);
+          reject(new Error(`Error loading video: ${source.src}`));
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
 
-        if (hoverPlay && scrollInPlay) {
-          // For hover + scroll-in-play videos: lazy load and pause when in view, ready for hover
-          this.setupScrollInPlayForHover(video);
-        } else if (hoverPlay) {
-          // For hover-only videos: just lazy load, no autoplay behavior
-          // Logic handled in setupHoverPlay
-        } else if (this.prefersReducedMotion) {
-          video.pause();
-        } else if (scrollInPlay) {
-          // For scroll-in-play videos, observe both for lazy loading and scroll trigger
-          this.setupScrollInPlay(video);
-        } else {
-          // For regular videos, just observe for lazy loading and autoplay when loaded
-          this.setupAutoplay(video);
-        }
-      });
+  showPictureElement(video) {
+    const pictureElement = this.findPictureElement(video);
+    if (pictureElement) {
+      pictureElement.style.display = "block";
     }
-  
-    /**
-     * Lazy load a video by setting the src from data-src
-     * @param {HTMLVideoElement} video - The video element to load
-     * @returns {Promise} - Resolves when video can play through
-     */
-    lazyLoadVideo(video) {
-      return new Promise((resolve, reject) => {
-        const source = video.querySelector("source[data-src]");
-        if (source && !source.src) {
-          source.src = source.getAttribute("data-src");
-          video.load();
-  
-          video.addEventListener("canplaythrough", function onCanPlayThrough() {
-            video.removeEventListener("canplaythrough", onCanPlayThrough);
-            resolve();
-          });
-  
-          video.addEventListener("error", function onError() {
-            video.removeEventListener("error", onError);
-            reject(new Error(`Error loading video: ${source.src}`));
-          });
-        } else {
-          resolve(); // Already loaded or source missing
-        }
-      });
+  }
+
+  hidePictureElement(video) {
+    const pictureElement = this.findPictureElement(video);
+    if (pictureElement) {
+      pictureElement.style.display = "none";
+    }
+  }
+
+  findPictureElement(video) {
+    if (this.pictureElementCache.has(video)) {
+      return this.pictureElementCache.get(video);
     }
 
-    /**
-     * Show the picture element for a video
-     * @param {HTMLVideoElement} video - The video element
-     */
-    showPictureElement(video) {
-      const pictureElement = this.findPictureElement(video);
-      if (pictureElement) {
-        pictureElement.style.display = "block";
+    let pictureElement = null;
+
+    let sibling = video.previousElementSibling;
+    while (sibling) {
+      if (sibling.tagName === "PICTURE" || sibling.tagName === "IMG") {
+        pictureElement = sibling;
+        break;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    if (!pictureElement) {
+      const container = this.getComponentContainer(video);
+      if (container) {
+        pictureElement = container.querySelector("picture, img");
       }
     }
 
-    /**
-     * Hide the picture element for a video
-     * @param {HTMLVideoElement} video - The video element
-     */
-    hidePictureElement(video) {
-      const pictureElement = this.findPictureElement(video);
-      if (pictureElement) {
-        pictureElement.style.display = "none";
-      }
-    }
+    this.pictureElementCache.set(video, pictureElement);
 
-    /**
-     * Find the picture element associated with a video
-     * @param {HTMLVideoElement} video - The video element
-     * @returns {HTMLElement|null} - The picture element or null if not found
-     */
-    findPictureElement(video) {
-      // Check cache first for performance
-      if (this.pictureElementCache.has(video)) {
-        return this.pictureElementCache.get(video);
-      }
+    return pictureElement;
+  }
 
-      let pictureElement = null;
+  setupVideoControls() {
+    const videos = document.querySelectorAll("video[data-video]");
 
-      // First, check previous siblings (most common case)
-      let sibling = video.previousElementSibling;
-      while (sibling) {
-        if (sibling.tagName === "PICTURE" || sibling.tagName === "IMG") {
-          pictureElement = sibling;
-          break;
-        }
-        sibling = sibling.previousElementSibling;
+    videos.forEach((video) => {
+      this.handlePlaybackButtons(video);
+    });
+  }
+
+  setupHoverPlay() {
+    const hoverVideos = document.querySelectorAll(
+      'video[data-video-hover="true"]',
+    );
+
+    hoverVideos.forEach((video) => {
+      if (video.closest('.card[data-video-card-hover="true"]')) {
+        return;
       }
 
-      // Fallback: search within the component container
-      if (!pictureElement) {
-        const container = this.getComponentContainer(video);
-        if (container) {
-          pictureElement = container.querySelector('picture, img');
-        }
-      }
-
-      // Cache the result (WeakMap allows garbage collection when video is removed)
-      this.pictureElementCache.set(video, pictureElement);
-
-      return pictureElement;
-    }
-
-    /**
-     * Setup play/pause button controls for videos
-     */
-    setupVideoControls() {
-      const videos = document.querySelectorAll("video[data-video]");
-  
-      videos.forEach((video) => {
-        this.handlePlaybackButtons(video);
-      });
-    }
-  
-    /**
-     * Setup hover-to-play functionality for videos with data-video-hover="true"
-     */
-    setupHoverPlay() {
-      const hoverVideos = document.querySelectorAll(
-        'video[data-video-hover="true"]'
-      );
-  
-      hoverVideos.forEach((video) => {
-        const container = this.getComponentContainer(video);
-        const trigger = container || video;
-        let hasPlayedOnce = false;
-
-        if (trigger) {
-          // Ensure poster is visible initially for hover videos
-          this.showPictureElement(video);
-
-          // Make the playback button inaccessible since hover is the primary interaction.
-          if (container) {
-            const playbackButton = container.querySelector('[data-video-playback="button"]');
-            if (playbackButton) {
-              playbackButton.setAttribute("aria-hidden", "true");
-              playbackButton.setAttribute("tabindex", "-1");
-            }
-          }
-
-          // On mouse enter, hide picture, lazy load and play
-          const mouseEnterHandler = async () => {
-            if (this.prefersReducedMotion) return;
-            try {
-              this.hidePictureElement(video);
-              await this.lazyLoadVideo(video);
-              // Only reset to beginning on first play
-              if (!hasPlayedOnce) {
-                video.currentTime = 0;
-                hasPlayedOnce = true;
-              }
-              video.play();
-            } catch (error) {
-              console.error('Error playing hover video:', error);
-            }
-          };
-
-          // On mouse leave, pause video (keep current frame visible)
-          const mouseLeaveHandler = () => {
-            video.pause();
-          };
-
-          trigger.addEventListener("mouseenter", mouseEnterHandler);
-          trigger.addEventListener("mouseleave", mouseLeaveHandler);
-
-          // Store listeners for cleanup
-          if (!this.eventListeners.has(video)) {
-            this.eventListeners.set(video, []);
-          }
-          this.eventListeners.get(video).push(
-            { element: trigger, type: "mouseenter", handler: mouseEnterHandler },
-            { element: trigger, type: "mouseleave", handler: mouseLeaveHandler }
-          );
-        }
-      });
-    }
-    /**
-     * Setup autoplay for videos that should play immediately when loaded
-     * @param {HTMLVideoElement} video - The video element
-     */
-    setupAutoplay(video) {
-      video.addEventListener("canplaythrough", () => {
-        if (!this.prefersReducedMotion) {
-          this.hidePictureElement(video);
-          video.play().catch(console.error);
-        }
-      });
-    }
-  
-    /**
-     * Setup scroll-in-play functionality for a video
-     * @param {HTMLVideoElement} video - The video element
-     */
-    setupScrollInPlay(video) {
+      const container = this.getComponentContainer(video);
+      const trigger = container || video;
       let hasPlayedOnce = false;
 
-      const observer = new IntersectionObserver(
-        (entries) => {
-          // Process entries without async forEach for better performance
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              // Handle lazy loading and playback
-              this.lazyLoadVideo(video)
-                .then(() => {
-                  // If reduced motion is preferred, don't play the video
-                  if (!this.prefersReducedMotion) {
-                    this.hidePictureElement(video);
-                    // Only reset to beginning on first play
-                    if (!hasPlayedOnce) {
-                      video.currentTime = 0;
-                      hasPlayedOnce = true;
-                    }
-                    video.play();
-                  }
-                })
-                .catch(console.error);
-            }
-            // On scroll out, pause the video (keep current frame visible)
-            else {
-              video.pause();
-            }
+      if (trigger) {
+        this.showPictureElement(video);
+
+        if (container) {
+          const playbackButton = container.querySelector(
+            '[data-video-playback="button"]',
+          );
+          if (playbackButton) {
+            playbackButton.setAttribute("aria-hidden", "true");
+            playbackButton.setAttribute("tabindex", "-1");
           }
-        },
-        {
-          threshold: this.options.scrollTriggerThreshold,
         }
-      );
 
-      observer.observe(video);
-      this.scrollObservers.set(video, observer);
-    }
-
-    /**
-     * Setup scroll-in-play functionality for hover videos (lazy load and pause when in view)
-     * @param {HTMLVideoElement} video - The video element
-     */
-    setupScrollInPlayForHover(video) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          // Process entries without async forEach for better performance
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              // Handle lazy loading
-              this.lazyLoadVideo(video)
-                .then(() => {
-                  // Pause the video so it's ready for hover play
-                  video.pause();
-                  // Ensure poster is visible
-                  this.showPictureElement(video);
-                })
-                .catch(console.error);
-            }
-          }
-        },
-        {
-          threshold: this.options.scrollTriggerThreshold,
-        }
-      );
-
-      observer.observe(video);
-      this.scrollObservers.set(video, observer);
-    }
-
-    /**
-     * Handle play/pause buttons for a video
-     * @param {HTMLVideoElement} video - The video element
-     */
-    handlePlaybackButtons(video) {
-      const container = this.getComponentContainer(video);
-      if (!container) return;
-
-      // Find single playback button within the component container
-      const playbackButton = container.querySelector('[data-video-playback="button"]');
-
-      if (!playbackButton) return;
-
-      // Find play and pause icon spans within the button
-      const playIcon = playbackButton.querySelector('[data-video-playback="play"]');
-      const pauseIcon = playbackButton.querySelector('[data-video-playback="pause"]');
-
-      if (!playIcon || !pauseIcon) return;
-
-      // Helper function to toggle icon visibility and aria-label
-      const toggleButtonState = (isPlaying) => {
-        if (isPlaying) {
-          // Hide play icon, show pause icon
-          playIcon.style.display = "none";
-          playIcon.style.visibility = "hidden";
-          playIcon.setAttribute("aria-hidden", "true");
-
-          pauseIcon.style.display = "flex";
-          pauseIcon.style.visibility = "visible";
-          pauseIcon.setAttribute("aria-hidden", "false");
-
-          // Update button aria-label to indicate current action
-          playbackButton.setAttribute("aria-label", "Pause video");
-        } else {
-          // Show play icon, hide pause icon
-          playIcon.style.display = "flex";
-          playIcon.style.visibility = "visible";
-          playIcon.setAttribute("aria-hidden", "false");
-
-          pauseIcon.style.display = "none";
-          pauseIcon.style.visibility = "hidden";
-          pauseIcon.setAttribute("aria-hidden", "true");
-
-          // Update button aria-label to indicate current action
-          playbackButton.setAttribute("aria-label", "Play video");
-        }
-      };
-
-      // Set initial button state
-      toggleButtonState(!video.paused);
-
-      // Event listener for playback button
-      const clickHandler = async (event) => {
-        event.stopPropagation();
-
-        if (video.paused) {
-          // Video is paused, play it
+        const mouseEnterHandler = async () => {
+          if (this.prefersReducedMotion) return;
           try {
-            await this.lazyLoadVideo(video);
             this.hidePictureElement(video);
+            await this.lazyLoadVideo(video);
+            if (!hasPlayedOnce) {
+              video.currentTime = 0;
+              hasPlayedOnce = true;
+            }
             video.play();
-            toggleButtonState(true);
           } catch (error) {
-            console.error(error);
+            console.error("Error playing hover video:", error);
           }
-        } else {
-          // Video is playing, pause it
+        };
+
+        const mouseLeaveHandler = () => {
           video.pause();
-          toggleButtonState(false);
+        };
+
+        trigger.addEventListener("mouseenter", mouseEnterHandler);
+        trigger.addEventListener("mouseleave", mouseLeaveHandler);
+
+        if (!this.eventListeners.has(video)) {
+          this.eventListeners.set(video, []);
         }
-      };
-
-      // Sync button state with video play/pause events
-      const playHandler = () => toggleButtonState(true);
-      const pauseHandler = () => toggleButtonState(false);
-
-      playbackButton.addEventListener("click", clickHandler);
-      video.addEventListener("play", playHandler);
-      video.addEventListener("pause", pauseHandler);
-
-      // Store listeners for cleanup
-      if (!this.eventListeners.has(video)) {
-        this.eventListeners.set(video, []);
+        this.eventListeners
+          .get(video)
+          .push(
+            {
+              element: trigger,
+              type: "mouseenter",
+              handler: mouseEnterHandler,
+            },
+            {
+              element: trigger,
+              type: "mouseleave",
+              handler: mouseLeaveHandler,
+            },
+          );
       }
-      this.eventListeners.get(video).push(
+    });
+  }
+
+  setupCardHover() {
+    const cards = document.querySelectorAll(
+      '.card[data-video-card-hover="true"]',
+    );
+
+    cards.forEach((card) => {
+      const video = card.querySelector("video[data-video]");
+      if (!video) return;
+
+      this.cardHoverVideos.set(video, card);
+      this.cardHoverPlayState.set(video, { hasPlayedOnce: false });
+      this.applyCardHoverBehavior(video, card);
+    });
+  }
+
+  applyCardHoverBehavior(video, card) {
+    const isDesktop = window.innerWidth > this.options.cardHoverBreakpoint;
+
+    this.cleanupCardHoverListeners(video);
+
+    if (isDesktop) {
+      this.setupCardHoverDesktop(video, card);
+    } else {
+      this.setupCardHoverMobile(video);
+    }
+  }
+
+  setupCardHoverDesktop(video, card) {
+    const playState = this.cardHoverPlayState.get(video) || {
+      hasPlayedOnce: false,
+    };
+
+    if (!playState.hasPlayedOnce) {
+      this.showPictureElement(video);
+    }
+    video.pause();
+
+    const mouseEnterHandler = async () => {
+      if (this.prefersReducedMotion) return;
+      try {
+        this.hidePictureElement(video);
+        await this.lazyLoadVideo(video);
+        if (!playState.hasPlayedOnce) {
+          video.currentTime = 0;
+          playState.hasPlayedOnce = true;
+        }
+        video.play();
+      } catch (error) {
+        console.error("Error playing card hover video:", error);
+      }
+    };
+
+    const mouseLeaveHandler = () => {
+      video.pause();
+    };
+
+    card.addEventListener("mouseenter", mouseEnterHandler);
+    card.addEventListener("mouseleave", mouseLeaveHandler);
+
+    if (!this.eventListeners.has(video)) {
+      this.eventListeners.set(video, []);
+    }
+    this.eventListeners
+      .get(video)
+      .push(
+        {
+          element: card,
+          type: "mouseenter",
+          handler: mouseEnterHandler,
+          isCardHover: true,
+        },
+        {
+          element: card,
+          type: "mouseleave",
+          handler: mouseLeaveHandler,
+          isCardHover: true,
+        },
+      );
+  }
+
+  setupCardHoverMobile(video) {
+    const playState = this.cardHoverPlayState.get(video) || {
+      hasPlayedOnce: false,
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            this.lazyLoadVideo(video)
+              .then(() => {
+                if (!this.prefersReducedMotion) {
+                  this.hidePictureElement(video);
+                  if (!playState.hasPlayedOnce) {
+                    video.currentTime = 0;
+                    playState.hasPlayedOnce = true;
+                  }
+                  video.play();
+                }
+              })
+              .catch(console.error);
+          } else {
+            video.pause();
+          }
+        }
+      },
+      {
+        threshold: this.options.scrollTriggerThreshold,
+      },
+    );
+
+    observer.observe(video);
+    this.scrollObservers.set(video, observer);
+  }
+
+  cleanupCardHoverListeners(video) {
+    if (this.eventListeners.has(video)) {
+      const listeners = this.eventListeners.get(video);
+      const cardHoverListeners = listeners.filter((l) => l.isCardHover);
+      cardHoverListeners.forEach(({ element, type, handler }) => {
+        element.removeEventListener(type, handler);
+      });
+      this.eventListeners.set(
+        video,
+        listeners.filter((l) => !l.isCardHover),
+      );
+    }
+
+    if (this.scrollObservers.has(video)) {
+      this.scrollObservers.get(video).disconnect();
+      this.scrollObservers.delete(video);
+    }
+  }
+
+  handleCardHoverResize() {
+    this.cardHoverVideos.forEach((card, video) => {
+      const playState = this.cardHoverPlayState.get(video) || {
+        hasPlayedOnce: false,
+      };
+      video.pause();
+      if (!playState.hasPlayedOnce) {
+        this.showPictureElement(video);
+      }
+      this.applyCardHoverBehavior(video, card);
+    });
+  }
+
+  setupAutoplay(video) {
+    video.addEventListener("canplaythrough", () => {
+      if (!this.prefersReducedMotion) {
+        this.hidePictureElement(video);
+        video.play().catch(console.error);
+      }
+    });
+  }
+
+  setupScrollInPlay(video) {
+    let hasPlayedOnce = false;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            this.lazyLoadVideo(video)
+              .then(() => {
+                if (!this.prefersReducedMotion) {
+                  this.hidePictureElement(video);
+                  if (!hasPlayedOnce) {
+                    video.currentTime = 0;
+                    hasPlayedOnce = true;
+                  }
+                  video.play();
+                }
+              })
+              .catch(console.error);
+          } else {
+            video.pause();
+          }
+        }
+      },
+      {
+        threshold: this.options.scrollTriggerThreshold,
+      },
+    );
+
+    observer.observe(video);
+    this.scrollObservers.set(video, observer);
+  }
+
+  setupScrollInPlayForHover(video) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            this.lazyLoadVideo(video)
+              .then(() => {
+                video.pause();
+                this.showPictureElement(video);
+              })
+              .catch(console.error);
+          }
+        }
+      },
+      {
+        threshold: this.options.scrollTriggerThreshold,
+      },
+    );
+
+    observer.observe(video);
+    this.scrollObservers.set(video, observer);
+  }
+
+  handlePlaybackButtons(video) {
+    const container = this.getComponentContainer(video);
+    if (!container) return;
+
+    const playbackButton = container.querySelector(
+      '[data-video-playback="button"]',
+    );
+
+    if (!playbackButton) return;
+
+    const playIcon = playbackButton.querySelector(
+      '[data-video-playback="play"]',
+    );
+    const pauseIcon = playbackButton.querySelector(
+      '[data-video-playback="pause"]',
+    );
+
+    if (!playIcon || !pauseIcon) return;
+
+    const toggleButtonState = (isPlaying) => {
+      if (isPlaying) {
+        playIcon.style.display = "none";
+        playIcon.style.visibility = "hidden";
+        playIcon.setAttribute("aria-hidden", "true");
+
+        pauseIcon.style.display = "flex";
+        pauseIcon.style.visibility = "visible";
+        pauseIcon.setAttribute("aria-hidden", "false");
+
+        playbackButton.setAttribute("aria-label", "Pause video");
+      } else {
+        playIcon.style.display = "flex";
+        playIcon.style.visibility = "visible";
+        playIcon.setAttribute("aria-hidden", "false");
+
+        pauseIcon.style.display = "none";
+        pauseIcon.style.visibility = "hidden";
+        pauseIcon.setAttribute("aria-hidden", "true");
+
+        playbackButton.setAttribute("aria-label", "Play video");
+      }
+    };
+
+    toggleButtonState(!video.paused);
+
+    const clickHandler = async (event) => {
+      event.stopPropagation();
+
+      if (video.paused) {
+        try {
+          await this.lazyLoadVideo(video);
+          this.hidePictureElement(video);
+          video.play();
+          toggleButtonState(true);
+        } catch (error) {
+          console.error(error);
+        }
+      } else {
+        video.pause();
+        toggleButtonState(false);
+      }
+    };
+
+    const playHandler = () => toggleButtonState(true);
+    const pauseHandler = () => toggleButtonState(false);
+
+    playbackButton.addEventListener("click", clickHandler);
+    video.addEventListener("play", playHandler);
+    video.addEventListener("pause", pauseHandler);
+
+    if (!this.eventListeners.has(video)) {
+      this.eventListeners.set(video, []);
+    }
+    this.eventListeners
+      .get(video)
+      .push(
         { element: playbackButton, type: "click", handler: clickHandler },
         { element: video, type: "play", handler: playHandler },
-        { element: video, type: "pause", handler: pauseHandler }
+        { element: video, type: "pause", handler: pauseHandler },
       );
+  }
+
+  async playVideo(videoId) {
+    const video = document.querySelector(`video[data-video="${videoId}"]`);
+    if (!video) {
+      console.warn(`Video with id "${videoId}" not found`);
+      return;
     }
-  
-    /**
-     * Play a specific video by its data-video attribute
-     * @param {string} videoId - The data-video attribute value
-     */
-    async playVideo(videoId) {
-      const video = document.querySelector(`video[data-video="${videoId}"]`);
-      if (!video) {
-        console.warn(`Video with id "${videoId}" not found`);
-        return;
+
+    try {
+      await this.lazyLoadVideo(video);
+      if (!this.prefersReducedMotion) {
+        this.hidePictureElement(video);
+        video.currentTime = 0;
+        video.play();
       }
-  
-      try {
-        await this.lazyLoadVideo(video);
-        if (!this.prefersReducedMotion) {
-          this.hidePictureElement(video);
-          video.currentTime = 0;
-          video.play();
-        }
-      } catch (error) {
-        console.error(`Error playing video ${videoId}:`, error);
-      }
+    } catch (error) {
+      console.error(`Error playing video ${videoId}:`, error);
     }
-  
-    /**
-     * Pause a specific video by its data-video attribute
-     * @param {string} videoId - The data-video attribute value
-     */
-    pauseVideo(videoId) {
-      const video = document.querySelector(`video[data-video="${videoId}"]`);
-      if (!video) {
-        console.warn(`Video with id "${videoId}" not found`);
-        return;
-      }
-  
+  }
+
+  pauseVideo(videoId) {
+    const video = document.querySelector(`video[data-video="${videoId}"]`);
+    if (!video) {
+      console.warn(`Video with id "${videoId}" not found`);
+      return;
+    }
+
+    video.pause();
+  }
+
+  pauseAllVideos() {
+    document.querySelectorAll("video[data-video]").forEach((video) => {
       video.pause();
+    });
+  }
+
+  destroy() {
+    if (this.videoObserver) {
+      this.videoObserver.disconnect();
     }
-  
-    /**
-     * Pause all videos
-     */
-    pauseAllVideos() {
-      document.querySelectorAll("video[data-video]").forEach((video) => {
-        video.pause();
+
+    this.scrollObservers.forEach((observer) => {
+      observer.disconnect();
+    });
+    this.scrollObservers.clear();
+
+    this.eventListeners.forEach((listeners) => {
+      listeners.forEach(({ element, type, handler }) => {
+        element.removeEventListener(type, handler);
       });
+    });
+    this.eventListeners = new WeakMap();
+
+    if (this.resizeHandler) {
+      window.removeEventListener("resize", this.resizeHandler);
+      this.resizeHandler = null;
     }
-  
-    /**
-     * Destroy the video library and clean up observers
-     */
-    destroy() {
-      // Disconnect IntersectionObservers
-      if (this.videoObserver) {
-        this.videoObserver.disconnect();
-      }
 
-      this.scrollObservers.forEach((observer) => {
-        observer.disconnect();
-      });
-      this.scrollObservers.clear();
-
-      // Remove all event listeners
-      this.eventListeners.forEach((listeners) => {
-        listeners.forEach(({ element, type, handler }) => {
-          element.removeEventListener(type, handler);
-        });
-      });
-      this.eventListeners = new WeakMap();
-
-      // Clear resize handler and timeout
-      if (this.resizeHandler) {
-        window.removeEventListener("resize", this.resizeHandler);
-        this.resizeHandler = null;
-      }
-
-      if (this.resizeTimeout) {
-        clearTimeout(this.resizeTimeout);
-        this.resizeTimeout = null;
-      }
-
-      // Clear caches
-      this.pictureElementCache = new WeakMap();
+    if (this.resizeTimeout) {
+      clearTimeout(this.resizeTimeout);
+      this.resizeTimeout = null;
     }
-  
-    /**
-     * Reinitialize the video library (useful after DOM changes)
-     */
-    reinitialize() {
-      this.destroy();
-      this.init();
-    }
+
+    this.pictureElementCache = new WeakMap();
+    this.cardHoverVideos.clear();
+    this.cardHoverPlayState = new WeakMap();
+  }
+
+  reinitialize() {
+    this.destroy();
+    this.init();
+  }
 }
-  
-  // Auto-initialize if DOM is already loaded and videos are present
-  function initializeVideoLibrary() {
-    // Quick check before instantiating to avoid unnecessary object creation
-    if (document.querySelectorAll("video[data-video]").length > 0) {
-      window.videoLibrary = new VideoLibrary();
-    } else if (window.VideoLibraryConfig?.debug) {
-      console.log(
-        "VideoLibrary: No videos detected, skipping auto-initialization."
-      );
-    }
+
+function initializeVideoLibrary() {
+  if (document.querySelectorAll("video[data-video]").length > 0) {
+    window.videoLibrary = new VideoLibrary();
+  } else if (window.VideoLibraryConfig?.debug) {
+    console.log(
+      "VideoLibrary: No videos detected, skipping auto-initialization.",
+    );
   }
-  
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeVideoLibrary);
-  } else {
-    initializeVideoLibrary();
-  }
-  
-  // Export for module usage
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = VideoLibrary;
-  }
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initializeVideoLibrary);
+} else {
+  initializeVideoLibrary();
+}
+
+if (typeof module !== "undefined" && module.exports) {
+  module.exports = VideoLibrary;
+}
