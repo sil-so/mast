@@ -18,7 +18,6 @@
       const dialogs = document.querySelectorAll("dialog");
       if (dialogs.length === 0) return;
 
-      // Create backdrop element (but don't show it yet)
       getOrCreateBackdrop();
       
       document.addEventListener("click", handleModalClicks);
@@ -92,7 +91,6 @@
   // ============================================
 
   function openModal(dialog) {
-    // Normal open - use native backdrop only
     dialog.classList.remove("transitioned");
     dialog.showModal();
     dialog.scrollTop = 0;
@@ -104,7 +102,6 @@
     
     dialog.classList.add("closing");
     
-    // Only fade custom backdrop if this modal was opened via transition
     if (wasTransitioned) {
       backdrop.classList.remove("no-transition");
       backdrop.classList.remove("visible");
@@ -125,14 +122,11 @@
     
     toDialog.dataset.returnToModal = fromDialog.id;
     
-    // Show custom backdrop instantly (no transition)
     backdrop.classList.add("no-transition");
     backdrop.classList.add("visible");
     
-    // Force reflow
     backdrop.offsetHeight;
     
-    // Mark source as transitioning (hides its native backdrop)
     fromDialog.classList.remove("transitioned");
     fromDialog.classList.add("transitioning-out");
     
@@ -142,12 +136,10 @@
       fromDialog.classList.remove("transitioning-out");
       fromDialog.close();
       
-      // Open target modal
       toDialog.classList.add("transitioning-in");
       toDialog.showModal();
       toDialog.scrollTop = 0;
       
-      // Trigger entrance animation
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           toDialog.classList.add("animate-content");
@@ -159,11 +151,9 @@
     toDialog.addEventListener("animationend", function enterHandler(e) {
       if (e.target !== toDialog) return;
       
-      // Mark as transitioned - keeps using custom backdrop
       toDialog.classList.add("transitioned");
       toDialog.classList.remove("transitioning-in", "animate-content");
       
-      // Allow transitions again on backdrop
       backdrop.classList.remove("no-transition");
       
     }, { once: true });
@@ -254,3 +244,13 @@
 
   window.modalTransitionBack = transitionBack;
 })();
+</script>
+
+<script>
+const scrollContainer = document.querySelector('.modal-scroll');
+if (scrollContainer) {
+  const isOverflowing = scrollContainer.scrollHeight > scrollContainer.clientHeight;
+  if (!isOverflowing) {
+    scrollContainer.style.maskImage = 'none';
+  }
+}
