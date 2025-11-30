@@ -244,13 +244,3 @@
 
   window.modalTransitionBack = transitionBack;
 })();
-</script>
-
-<script>
-const scrollContainer = document.querySelector('.modal-scroll');
-if (scrollContainer) {
-  const isOverflowing = scrollContainer.scrollHeight > scrollContainer.clientHeight;
-  if (!isOverflowing) {
-    scrollContainer.style.maskImage = 'none';
-  }
-}
